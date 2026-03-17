@@ -17,40 +17,42 @@ You hear a gentle chime on start and stop.
 
 ## Install
 
-### Prerequisites
+### Quick start (recommended)
 
+Requirements:
+- **macOS**
+- **Homebrew**
 - **Go 1.24+**
-- **ffmpeg** or **sox** for audio recording (`brew install ffmpeg` or `brew install sox`)
-- **whisper.cpp** for local transcription (`brew install whisper-cpp`)
-- A Whisper model file:
-  ```bash
-  mkdir -p ~/.local/share/whisper-cpp
-  curl -L -o ~/.local/share/whisper-cpp/ggml-base.en.bin \
-    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
-  ```
-
-### Build
 
 ```bash
 git clone https://github.com/mattthewong/vox.git
 cd vox
+make setup   # installs sox + whisper-cpp and downloads a default model if missing
+make start   # starts whisper-server and runs vox
+```
+
+### Manual setup (advanced)
+
+```bash
+brew install sox whisper-cpp
+mkdir -p ~/.local/share/whisper-cpp
+curl -L -o ~/.local/share/whisper-cpp/ggml-base.en.bin \
+  "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
+```
+
+### Build or install binary
+
+```bash
 make build      # outputs bin/vox
 make install    # installs to /usr/local/bin/vox
 ```
 
-### Start Whisper server
+### Start manually
 
 ```bash
 whisper-server --host 127.0.0.1 --port 2022 \
   --model ~/.local/share/whisper-cpp/ggml-base.en.bin
-```
-
-### Run
-
-```bash
 vox
-# or with custom hotkey:
-VOX_HOTKEY="fn,cmd+shift" vox
 ```
 
 ## macOS permissions
