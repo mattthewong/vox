@@ -122,3 +122,5 @@ I was using Whisper Flow for speech-to-text but kept hitting rate limits on thei
 ## License
 
 MIT
+
+<!-- CI smoke test draft PR; safe to close without merge. -->
