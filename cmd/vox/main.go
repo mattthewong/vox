@@ -86,9 +86,9 @@ func run() {
 	listener := hotkey.NewListener(cfg.Triggers)
 
 	if cfg.HoldToTalk {
-		fmt.Printf("Ready! Hold %s to dictate.\n", hotkeyLabel)
+		fmt.Printf("✅ Vox ready — Hold %s to dictate.\n", hotkeyLabel)
 	} else {
-		fmt.Printf("Ready! Press %s to start/stop dictation.\n", hotkeyLabel)
+		fmt.Printf("✅ Vox ready — Press %s to start/stop dictation.\n", hotkeyLabel)
 	}
 	fmt.Println()
 
