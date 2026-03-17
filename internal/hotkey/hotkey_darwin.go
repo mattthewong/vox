@@ -6,7 +6,7 @@ package hotkey
 #cgo LDFLAGS: -framework ApplicationServices -framework CoreFoundation
 
 int startEventTap(void);
-int checkAccessibility(void);
+int checkAccessibility(int prompt);
 */
 import "C"
 
@@ -72,7 +72,8 @@ func NewListener(triggers []Trigger) *Listener {
 
 // CheckAccessibility returns true if the process has Accessibility permission.
 func CheckAccessibility() bool {
-	return C.checkAccessibility() == 1
+	// Request macOS to show the Accessibility permission prompt if needed.
+	return C.checkAccessibility(1) == 1
 }
 
 // Start begins listening for hotkey events. This function blocks forever
