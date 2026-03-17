@@ -1,4 +1,4 @@
-name: ci
+name: PR Checks
 
 on:
   pull_request:
@@ -6,7 +6,7 @@ on:
 
 jobs:
   go-checks:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
