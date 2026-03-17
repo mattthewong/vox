@@ -29,8 +29,28 @@ static CGEventRef hotkey_callback(
     return event;
 }
 
-int checkAccessibility(void) {
-    return AXIsProcessTrusted() ? 1 : 0;
+int checkAccessibility(int prompt) {
+    if (!prompt) {
+        return AXIsProcessTrusted() ? 1 : 0;
+    }
+
+    const void *keys[] = { kAXTrustedCheckOptionPrompt };
+    const void *values[] = { kCFBooleanTrue };
+    CFDictionaryRef options = CFDictionaryCreate(
+        kCFAllocatorDefault,
+        keys,
+        values,
+        1,
+        &kCFCopyStringDictionaryKeyCallBacks,
+        &kCFTypeDictionaryValueCallBacks
+    );
+    if (!options) {
+        return AXIsProcessTrusted() ? 1 : 0;
+    }
+
+    Boolean trusted = AXIsProcessTrustedWithOptions(options);
+    CFRelease(options);
+    return trusted ? 1 : 0;
 }
 
 int startEventTap(void) {

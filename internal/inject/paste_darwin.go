@@ -3,8 +3,12 @@
 package inject
 
 /*
-#cgo LDFLAGS: -framework ApplicationServices
+#cgo LDFLAGS: -framework ApplicationServices -framework AppKit
 #include <ApplicationServices/ApplicationServices.h>
+
+void *clipboardSnapshotCreate(void);
+int clipboardSnapshotRestore(void *snapshot);
+void clipboardSnapshotFree(void *snapshot);
 
 // simulateCmdV posts Cmd+V keyboard events to the system.
 void simulateCmdV(void) {
@@ -38,6 +42,12 @@ func TypeText(text string) error {
 		return nil
 	}
 
+	snapshot := C.clipboardSnapshotCreate()
+	if snapshot == nil {
+		return fmt.Errorf("inject: snapshot clipboard failed")
+	}
+	defer C.clipboardSnapshotFree(snapshot)
+
 	if err := copyToClipboard(text); err != nil {
 		return fmt.Errorf("inject: copy to clipboard: %w", err)
 	}
@@ -47,6 +57,12 @@ func TypeText(text string) error {
 
 	// Post Cmd+V via CGEvent (works regardless of which app is focused).
 	C.simulateCmdV()
+
+	// Give the focused app time to consume the paste, then restore user clipboard.
+	time.Sleep(250 * time.Millisecond)
+	if C.clipboardSnapshotRestore(snapshot) != 1 {
+		return fmt.Errorf("inject: restore clipboard failed")
+	}
 
 	return nil
 }
