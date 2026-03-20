@@ -1,5 +1,7 @@
 .PHONY: build test test-short lint run setup start clean install deps fmt
 
+export CGO_LDFLAGS := -Wl,-no_warn_duplicate_libraries
+
 build:
 	go build -o bin/vox ./cmd/vox
 
@@ -43,7 +45,11 @@ setup:
 		echo "Downloading whisper model to $$MODEL_PATH..."; \
 		curl -L -o "$$MODEL_PATH" "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"; \
 	fi; \
-	echo "Setup complete. Run: make start"
+	echo ""; \
+	echo "Building vox..."; \
+	$(MAKE) build; \
+	echo ""; \
+	bin/vox setup
 
 start:
 	@set -eu; \

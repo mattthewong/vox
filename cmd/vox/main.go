@@ -34,6 +34,12 @@ func main() {
 
 func run() {
 	log.SetFlags(0)
+
+	if len(os.Args) > 1 && os.Args[1] == "setup" {
+		runSetup()
+		return
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -54,6 +60,12 @@ func run() {
 		fmt.Fprintln(os.Stderr, "Error: Accessibility permission required.")
 		fmt.Fprintln(os.Stderr, "  Grant it in: System Settings > Privacy & Security > Accessibility")
 		fmt.Fprintln(os.Stderr, "  Add your terminal app (Terminal, iTerm2, etc.) to the list.")
+		os.Exit(1)
+	}
+
+	// Check Microphone permission.
+	if !hotkey.RequestMicrophoneAccess() {
+		fmt.Fprintln(os.Stderr, "❌ Microphone denied — grant it in System Settings > Privacy & Security > Microphone")
 		os.Exit(1)
 	}
 
@@ -108,6 +120,28 @@ func run() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func runSetup() {
+	fmt.Println("Checking permissions...")
+	fmt.Println()
+
+	fmt.Print("Accessibility: ")
+	if hotkey.CheckAccessibility() {
+		fmt.Println("✅ granted")
+	} else {
+		fmt.Println("⏳ requested — grant it in System Settings > Privacy & Security > Accessibility")
+	}
+
+	fmt.Print("Microphone:    ")
+	if hotkey.RequestMicrophoneAccess() {
+		fmt.Println("✅ granted")
+	} else {
+		fmt.Println("❌ denied — grant it in System Settings > Privacy & Security > Microphone")
+	}
+
+	fmt.Println()
+	fmt.Println("Done. Run: make start")
 }
 
 func runHoldToTalk(
