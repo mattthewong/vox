@@ -13,7 +13,7 @@ func TestSetupSubcommand(t *testing.T) {
 		t.Skip("skipping setup subcommand test in short mode")
 	}
 
-	out, err := exec.Command("go", "run", "./cmd/vox", "setup").CombinedOutput()
+	out, err := exec.Command("go", "run", ".", "setup").CombinedOutput()
 	if err != nil {
 		t.Fatalf("vox setup exited with error: %v\noutput: %s", err, out)
 	}
