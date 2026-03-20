@@ -2,7 +2,7 @@
 
 System-wide speech-to-text for macOS. Hold a hotkey, speak, release -- transcribed text appears wherever your cursor is. Runs entirely locally using [whisper.cpp](https://github.com/ggerganov/whisper.cpp). No paid services, no rate limits.
 
-![vox setup](https://github.com/user-attachments/assets/84b80ea5-7d6e-448d-840d-1829f16f8a91)
+<img src="assets/vox-setup.gif" alt="vox setup">
 
 ## How it works
 
