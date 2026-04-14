@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -28,13 +29,18 @@ const (
 )
 
 const (
-	defaultSampleRate = 16000
-	minFileSize       = 1024 // 1 KB — anything smaller is too short to contain speech
+	defaultSampleRate  = 16000
+	minFileSize        = 1024              // 1 KB — anything smaller is too short to contain speech
+	DefaultMaxDuration = 5 * time.Minute   // safety limit to prevent unbounded disk growth
+	killGracePeriod    = 3 * time.Second   // time to wait for SIGINT before escalating to SIGKILL
+	tempFilePattern    = "vox-*.wav"       // pattern used for recording temp files
+	soundFilePattern   = "vox-sound-*.wav" // pattern used for chime temp files
 )
 
 // Recorder manages microphone recording via an external CLI tool (sox or ffmpeg).
 type Recorder struct {
-	SampleRate int
+	SampleRate  int
+	MaxDuration time.Duration // 0 means no limit
 
 	mu        sync.Mutex
 	tool      toolKind
@@ -42,6 +48,23 @@ type Recorder struct {
 	tmpPath   string
 	recording bool
 	startTime time.Time
+	timer     *time.Timer // auto-stop timer
+}
+
+// CleanupOrphanedTempFiles removes any leftover vox temp files from prior
+// crashes or ungraceful shutdowns. Any vox-*.wav file that exists before the
+// process starts is definitionally orphaned — no running instance owns it.
+// This should be called once at startup.
+func CleanupOrphanedTempFiles() (removed int) {
+	for _, pattern := range []string{tempFilePattern, soundFilePattern} {
+		matches, _ := filepath.Glob(filepath.Join(os.TempDir(), pattern))
+		for _, m := range matches {
+			if os.Remove(m) == nil {
+				removed++
+			}
+		}
+	}
+	return removed
 }
 
 // NewRecorder creates a Recorder after auto-detecting an available recording tool.
@@ -49,7 +72,8 @@ type Recorder struct {
 // found on the system PATH an error is returned.
 func NewRecorder() (*Recorder, error) {
 	r := &Recorder{
-		SampleRate: defaultSampleRate,
+		SampleRate:  defaultSampleRate,
+		MaxDuration: DefaultMaxDuration,
 	}
 
 	if _, err := exec.LookPath("rec"); err == nil {
@@ -125,6 +149,17 @@ func (r *Recorder) Start() error {
 
 	r.recording = true
 	r.startTime = time.Now()
+
+	// Start a safety timer that auto-stops the recording after MaxDuration.
+	// This prevents unbounded disk growth if the user forgets to stop (toggle
+	// mode) or if the parent process dies and the subprocess keeps running.
+	if r.MaxDuration > 0 {
+		r.timer = time.AfterFunc(r.MaxDuration, func() {
+			// Best-effort: stop the recording. If it already stopped, this is a no-op.
+			_, _ = r.Stop()
+		})
+	}
+
 	return nil
 }
 
@@ -133,43 +168,69 @@ func (r *Recorder) Start() error {
 // Returns ErrTooShort if the resulting file is too small to contain useful audio.
 func (r *Recorder) Stop() ([]byte, error) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	if !r.recording {
+		r.mu.Unlock()
 		return nil, ErrNotRecording
 	}
 
-	// Always reset state when we leave, regardless of outcome.
+	// Cancel the safety timer if it hasn't fired yet.
+	if r.timer != nil {
+		r.timer.Stop()
+		r.timer = nil
+	}
+
+	// Grab the fields we need, then release the lock BEFORE waiting on the
+	// subprocess.  This avoids a deadlock when the timer goroutine calls
+	// Stop() while another goroutine polls IsRecording().
+	cmd := r.cmd
+	tmpPath := r.tmpPath
+
+	// Mark as not-recording immediately so callers see the state change
+	// even while we wait for the subprocess to exit.
+	r.recording = false
+	r.cmd = nil
+	r.tmpPath = ""
+	r.mu.Unlock()
+
+	// Ensure the temp file is always cleaned up.
 	defer func() {
-		r.recording = false
-		r.cmd = nil
-		if r.tmpPath != "" {
-			_ = os.Remove(r.tmpPath)
-			r.tmpPath = ""
+		if tmpPath != "" {
+			_ = os.Remove(tmpPath)
 		}
 	}()
 
 	// Gracefully interrupt the recording process so it flushes and finalises the WAV header.
-	if r.cmd.Process != nil {
-		if err := r.cmd.Process.Signal(syscall.SIGINT); err != nil {
-			// If signalling fails (e.g. process already exited), try to kill it.
-			_ = r.cmd.Process.Kill()
+	if cmd.Process != nil {
+		if err := cmd.Process.Signal(syscall.SIGINT); err != nil {
+			_ = cmd.Process.Kill()
 		}
 	}
 
-	// Wait for the process to exit. An exit caused by SIGINT is expected and not
-	// an error for our purposes, so we only surface truly unexpected failures.
-	waitErr := r.cmd.Wait()
-	if waitErr != nil {
-		// sox and ffmpeg exit with non-zero status on SIGINT — that is expected.
-		// We only propagate errors that are NOT an ExitError (e.g. process not started).
-		var exitErr *exec.ExitError
-		if !errors.As(waitErr, &exitErr) {
-			return nil, fmt.Errorf("wait for recording process: %w", waitErr)
+	// Wait for the process to exit with a grace period. If it doesn't exit
+	// after SIGINT, escalate to SIGKILL so we never block indefinitely.
+	waitDone := make(chan error, 1)
+	go func() { waitDone <- cmd.Wait() }()
+
+	select {
+	case waitErr := <-waitDone:
+		if waitErr != nil {
+			// sox and ffmpeg exit with non-zero status on SIGINT — that is expected.
+			// We only propagate errors that are NOT an ExitError (e.g. process not started).
+			var exitErr *exec.ExitError
+			if !errors.As(waitErr, &exitErr) {
+				return nil, fmt.Errorf("wait for recording process: %w", waitErr)
+			}
 		}
+	case <-time.After(killGracePeriod):
+		// Subprocess didn't exit in time — force-kill it.
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		<-waitDone // reap the process
 	}
 
-	data, err := os.ReadFile(r.tmpPath)
+	data, err := os.ReadFile(tmpPath)
 	if err != nil {
 		return nil, fmt.Errorf("read recorded audio: %w", err)
 	}
