@@ -34,7 +34,10 @@ func playEmbedded(data []byte) {
 	f.Close()
 
 	cmd := exec.Command("afplay", name)
-	cmd.Start()
+	if err := cmd.Start(); err != nil {
+		os.Remove(name)
+		return
+	}
 	// Clean up after playback in background.
 	go func() {
 		cmd.Wait()

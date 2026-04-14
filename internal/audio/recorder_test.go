@@ -2,7 +2,9 @@ package audio
 
 import (
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -149,5 +151,237 @@ func TestTooShortRecording(t *testing.T) {
 	}
 	if !errors.Is(err, ErrTooShort) {
 		t.Errorf("expected ErrTooShort, got: %v", err)
+	}
+}
+
+// --- Cleanup orphaned temp files ---
+
+func TestCleanupOrphanedTempFiles_RemovesVoxFiles(t *testing.T) {
+	// Create fake orphaned vox temp files in the OS temp dir.
+	tmpDir := os.TempDir()
+
+	files := []string{
+		filepath.Join(tmpDir, "vox-1234567890.wav"),
+		filepath.Join(tmpDir, "vox-9999999999.wav"),
+		filepath.Join(tmpDir, "vox-sound-1234567890.wav"),
+	}
+	for _, f := range files {
+		if err := os.WriteFile(f, []byte("fake wav data"), 0644); err != nil {
+			t.Fatalf("failed to create test file %s: %v", f, err)
+		}
+	}
+	// Verify they exist.
+	for _, f := range files {
+		if _, err := os.Stat(f); err != nil {
+			t.Fatalf("test file should exist: %s", f)
+		}
+	}
+
+	removed := CleanupOrphanedTempFiles()
+
+	if removed < len(files) {
+		t.Errorf("CleanupOrphanedTempFiles() removed %d files, want at least %d", removed, len(files))
+	}
+
+	// Verify they are gone.
+	for _, f := range files {
+		if _, err := os.Stat(f); !os.IsNotExist(err) {
+			t.Errorf("file should have been removed: %s", f)
+			os.Remove(f) // cleanup on failure
+		}
+	}
+}
+
+func TestCleanupOrphanedTempFiles_IgnoresOtherFiles(t *testing.T) {
+	// Create a non-vox temp file — it should NOT be deleted.
+	f, err := os.CreateTemp("", "notvox-*.wav")
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := f.Name()
+	f.Close()
+	defer os.Remove(name)
+
+	CleanupOrphanedTempFiles()
+
+	if _, err := os.Stat(name); os.IsNotExist(err) {
+		t.Errorf("non-vox file should not have been removed: %s", name)
+	}
+}
+
+func TestCleanupOrphanedTempFiles_NoFilesIsNoop(t *testing.T) {
+	// When there are no orphaned files, it should return 0 and not error.
+	// (We can't guarantee no vox files exist in the real tmpdir, but we
+	// can at least verify it doesn't panic.)
+	removed := CleanupOrphanedTempFiles()
+	if removed < 0 {
+		t.Errorf("CleanupOrphanedTempFiles() returned negative: %d", removed)
+	}
+}
+
+// --- Max recording duration ---
+
+func TestNewRecorderSetsDefaultMaxDuration(t *testing.T) {
+	hasMicrophone(t)
+
+	r, err := NewRecorder()
+	if err != nil {
+		t.Fatalf("NewRecorder() error: %v", err)
+	}
+	if r.MaxDuration != DefaultMaxDuration {
+		t.Errorf("MaxDuration = %v, want %v", r.MaxDuration, DefaultMaxDuration)
+	}
+}
+
+func TestMaxDurationAutoStops(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+	hasMicrophone(t)
+
+	r, err := NewRecorder()
+	if err != nil {
+		t.Fatalf("NewRecorder() error: %v", err)
+	}
+
+	// Set a very short max duration so the test doesn't take long.
+	r.MaxDuration = 2 * time.Second
+
+	if err := r.Start(); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+
+	// Wait long enough for the auto-stop to fire and the subprocess to exit.
+	// rec/ffmpeg can be slow to respond to SIGINT, so give generous headroom.
+	deadline := time.After(30 * time.Second)
+	tick := time.NewTicker(500 * time.Millisecond)
+	defer tick.Stop()
+
+	for {
+		select {
+		case <-deadline:
+			t.Error("timed out waiting for auto-stop")
+			r.Stop() // force cleanup
+			return
+		case <-tick.C:
+			if !r.IsRecording() {
+				return // success
+			}
+		}
+	}
+}
+
+func TestMaxDurationZeroDisablesTimer(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+	hasMicrophone(t)
+
+	r, err := NewRecorder()
+	if err != nil {
+		t.Fatalf("NewRecorder() error: %v", err)
+	}
+
+	// Disable max duration.
+	r.MaxDuration = 0
+
+	if err := r.Start(); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+	defer func() {
+		if r.IsRecording() {
+			r.Stop()
+		}
+	}()
+
+	// With MaxDuration=0, the internal timer should be nil.
+	r.mu.Lock()
+	hasTimer := r.timer != nil
+	r.mu.Unlock()
+
+	if hasTimer {
+		t.Error("expected no timer when MaxDuration=0")
+	}
+}
+
+// TestTimerSetAndClearedByStartStop verifies that Start creates a timer
+// and Stop cancels it, without depending on subprocess timing.
+func TestTimerSetAndClearedByStartStop(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+	hasMicrophone(t)
+
+	r, err := NewRecorder()
+	if err != nil {
+		t.Fatalf("NewRecorder() error: %v", err)
+	}
+
+	r.MaxDuration = 10 * time.Minute // won't fire during test
+
+	if err := r.Start(); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+
+	// Verify timer was created.
+	r.mu.Lock()
+	hasTimer := r.timer != nil
+	r.mu.Unlock()
+	if !hasTimer {
+		t.Error("expected timer to be set after Start()")
+	}
+
+	// Stop should cancel the timer.
+	_, err = r.Stop()
+	// ErrTooShort is acceptable for a very short recording.
+	if err != nil && !errors.Is(err, ErrTooShort) {
+		t.Fatalf("Stop() error: %v", err)
+	}
+
+	r.mu.Lock()
+	timerAfterStop := r.timer
+	r.mu.Unlock()
+	if timerAfterStop != nil {
+		t.Error("expected timer to be nil after Stop()")
+	}
+}
+
+// --- Temp file cleanup on Stop ---
+
+func TestStopCleansUpTempFile(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+	hasMicrophone(t)
+
+	r, err := NewRecorder()
+	if err != nil {
+		t.Fatalf("NewRecorder() error: %v", err)
+	}
+
+	if err := r.Start(); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+
+	// Capture the temp file path before Stop clears it.
+	r.mu.Lock()
+	tmpPath := r.tmpPath
+	r.mu.Unlock()
+
+	if tmpPath == "" {
+		t.Fatal("expected tmpPath to be set after Start()")
+	}
+
+	// Verify the temp file exists.
+	if _, err := os.Stat(tmpPath); os.IsNotExist(err) {
+		t.Fatal("temp file should exist after Start()")
+	}
+
+	_, _ = r.Stop()
+
+	// Verify the temp file was cleaned up.
+	if _, err := os.Stat(tmpPath); !os.IsNotExist(err) {
+		t.Errorf("temp file should have been removed after Stop(): %s", tmpPath)
+		os.Remove(tmpPath)
 	}
 }

@@ -79,6 +79,13 @@ func run() {
 		logger.Debug("whisper health check passed", "url", cfg.WhisperURL)
 	}
 
+	// Clean up any orphaned temp files from prior crashes in the background.
+	go func() {
+		if n := audio.CleanupOrphanedTempFiles(); n > 0 {
+			logger.Info("cleaned up orphaned temp files", "count", n)
+		}
+	}()
+
 	// Create audio recorder.
 	recorder, err := audio.NewRecorder()
 	if err != nil {
