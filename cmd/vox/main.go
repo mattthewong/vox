@@ -251,7 +251,7 @@ func handleStopAndTranscribe(
 		return
 	}
 
-	if text == "" {
+	if text == "" || isBlankAudio(text) {
 		fmt.Println("(no speech detected)")
 		fmt.Println("Ready!")
 		return
@@ -264,6 +264,14 @@ func handleStopAndTranscribe(
 	}
 
 	fmt.Println("Ready!")
+}
+
+// isBlankAudio returns true if the transcription is a whisper hallucination
+// artifact rather than real speech (e.g. "[BLANK_AUDIO]", "[blank audio]", "(blank audio)").
+func isBlankAudio(text string) bool {
+	t := strings.ToLower(strings.TrimSpace(text))
+	t = strings.Trim(t, "[]() ")
+	return t == "blank audio" || t == "blank_audio"
 }
 
 func cleanup(logger *slog.Logger, recorder *audio.Recorder) {
