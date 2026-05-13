@@ -33,6 +33,8 @@ import (
 	"vox/internal/ui"
 	"vox/internal/userconfig"
 	"vox/internal/vocab"
+	"vox/internal/whispermodel"
+	"vox/internal/whisperserver"
 )
 
 const (
@@ -140,14 +142,39 @@ func run() {
 		os.Exit(1)
 	}
 
-	// Check Whisper server.
-	whisperClient := transcribe.NewClient(cfg.WhisperURL)
+	// Resolve selected whisper model + start the embedded whisper-server child.
+	selectedModel, ok := whispermodel.ByID(cfg.ModelID)
+	if !ok {
+		selectedModel, _ = whispermodel.ByID(whispermodel.DefaultID)
+	}
+	if !whispermodel.IsInstalled(selectedModel) {
+		fmt.Printf("Selected model %q is not installed, downloading...\n", selectedModel.ID)
+		if err := whispermodel.Download(ctx, selectedModel, nil); err != nil {
+			fmt.Fprintf(os.Stderr, "Error downloading model %q: %v\n", selectedModel.ID, err)
+			os.Exit(1)
+		}
+	}
+	whisperSrv, err := whisperserver.New("127.0.0.1", 2022, whisperLogPath())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	modelPath, err := whispermodel.Path(selectedModel)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if err := whisperSrv.Start(ctx, modelPath); err != nil {
+		fmt.Fprintf(os.Stderr, "Error starting whisper-server: %v\n", err)
+		os.Exit(1)
+	}
+	whisperClient := transcribe.NewClient(whisperSrv.URL())
 	if err := whisperClient.HealthCheck(ctx); err != nil {
-		fmt.Printf("Warning: Whisper server unavailable at %s (%v)\n", cfg.WhisperURL, err)
+		fmt.Printf("Warning: Whisper server unavailable at %s (%v)\n", whisperSrv.URL(), err)
 		fmt.Println("  Transcription will fail until the server is reachable.")
 		fmt.Println()
 	} else if cfg.Verbose {
-		logger.Debug("whisper health check passed", "url", cfg.WhisperURL)
+		logger.Debug("whisper health check passed", "url", whisperSrv.URL())
 	}
 
 	// Clean up any orphaned temp files from prior crashes in the background.
@@ -182,12 +209,15 @@ func run() {
 		Language:      cfg.Language,
 	}
 
-	// Initialize Claude API client (nil if no ANTHROPIC_API_KEY).
+	// Initialize Claude API client. Key can come from:
+	//   1. ANTHROPIC_API_KEY env var (personal key)
+	//   2. vox-anthropic-key LD flag (team-managed key)
+	//   3. ~/.vox/config.yaml anthropic_key field
 	var claudeClient *claude.Client
-	if apiKey := os.Getenv("ANTHROPIC_API_KEY"); apiKey != "" {
+	if apiKey, keySource := flagClient.AnthropicKey(); apiKey != "" {
 		claudeClient = claude.NewClient(apiKey, flagClient.AIModel())
 		if cfg.Verbose {
-			logger.Debug("Claude API client initialized", "model", flagClient.AIModel())
+			logger.Debug("Claude API client initialized", "model", flagClient.AIModel(), "key_source", keySource)
 		}
 	}
 
@@ -220,6 +250,7 @@ func run() {
 	ui.Init(hotkeyLabel)
 	ui.SetState(ui.StateIdle)
 	ui.SetHotkeyPresets(hotkeyPresets, cfg.Hotkey)
+	ui.SetModelPresets(buildModelPresets(), selectedModel.ID)
 	ui.SetMode(cfg.HoldToTalk)
 	ui.SetSoundsEnabled(cfg.SoundsEnabled)
 	ui.SetAutoPaste(cfg.AutoPaste)
@@ -276,10 +307,11 @@ func run() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	go shutdownWatcher(cancel, logger, recorder, sigCh)
+	go shutdownWatcher(cancel, logger, recorder, whisperSrv, sigCh)
 	go showLogWatcher(ctx, logger)
 	go hotkeyChangeWatcher(ctx, logger, listener)
 	go settingsWatcher(ctx, logger, recorder)
+	go modelChangeWatcher(ctx, logger, whisperClient, whisperSrv)
 	go runEventLoop(ctx, cfg, logger, listener, recorder, pipe)
 
 	// Run NSApp's main loop on the main goroutine. Returns when the user
@@ -290,13 +322,16 @@ func run() {
 // shutdownWatcher waits for either an OS signal or a menubar Quit click,
 // then cancels the context (so watcher goroutines exit), drains the
 // recorder, and tells NSApp to terminate.
-func shutdownWatcher(cancel context.CancelFunc, logger *slog.Logger, recorder *audio.Recorder, sigCh <-chan os.Signal) {
+func shutdownWatcher(cancel context.CancelFunc, logger *slog.Logger, recorder *audio.Recorder, whisperSrv *whisperserver.Server, sigCh <-chan os.Signal) {
 	select {
 	case <-sigCh:
 	case <-ui.OnQuit():
 	}
 	cancel() // signal all watcher goroutines to stop
 	cleanup(logger, recorder)
+	if err := whisperSrv.Stop(context.Background()); err != nil {
+		logger.Warn("stop whisper-server", "error", err)
+	}
 	if p := os.Getenv("VOX_LOG_PATH"); p != "" {
 		_ = os.Remove(p)
 	}
@@ -304,6 +339,30 @@ func shutdownWatcher(cancel context.CancelFunc, logger *slog.Logger, recorder *a
 		_ = os.Remove(p)
 	}
 	ui.Quit()
+}
+
+func buildModelPresets() []ui.ModelPreset {
+	models := whispermodel.All()
+	presets := make([]ui.ModelPreset, 0, len(models))
+	for _, m := range models {
+		presets = append(presets, ui.ModelPreset{
+			ID:        m.ID,
+			Label:     m.Label,
+			Installed: whispermodel.IsInstalled(m),
+		})
+	}
+	return presets
+}
+
+func whisperLogPath() string {
+	if p := os.Getenv("VOX_LOG_PATH"); p != "" {
+		return filepath.Join(filepath.Dir(p), "whisper.log")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "whisper.log"
+	}
+	return filepath.Join(home, "Library", "Logs", "whisper.log")
 }
 
 // hotkeyPresets is the curated list shown in the "Change Hotkey" submenu.
@@ -352,6 +411,72 @@ func hotkeyChangeWatcher(ctx context.Context, logger *slog.Logger, listener *hot
 				logger.Warn("save prefs", "error", err)
 			}
 			fmt.Printf("Hotkey changed to %s\n", label)
+		}
+	}
+}
+
+func modelChangeWatcher(ctx context.Context, logger *slog.Logger, client *transcribe.Client, whisperSrv *whisperserver.Server) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case modelID := <-ui.OnModelChange():
+			model, ok := whispermodel.ByID(modelID)
+			if !ok {
+				logger.Warn("unknown model selected", "id", modelID)
+				continue
+			}
+
+			ui.SetModelMenuEnabled(false)
+			ui.SetStatusLine(fmt.Sprintf("Status: Preparing model %s…", model.ID))
+
+			if !whispermodel.IsInstalled(model) {
+				err := whispermodel.Download(ctx, model, func(downloaded, total int64) {
+					if total > 0 {
+						pct := (downloaded * 100) / total
+						ui.SetStatusLine(fmt.Sprintf("Status: Downloading %s (%d%%)…", model.ID, pct))
+						return
+					}
+					ui.SetStatusLine(fmt.Sprintf("Status: Downloading %s…", model.ID))
+				})
+				if err != nil {
+					logger.Warn("download model", "id", model.ID, "error", err)
+					ui.SetStatusLine("Status: Idle")
+					ui.SetModelMenuEnabled(true)
+					continue
+				}
+			}
+
+			path, err := whispermodel.Path(model)
+			if err != nil {
+				logger.Warn("resolve model path", "id", model.ID, "error", err)
+				ui.SetStatusLine("Status: Idle")
+				ui.SetModelMenuEnabled(true)
+				continue
+			}
+
+			ui.SetStatusLine(fmt.Sprintf("Status: Switching to %s…", model.ID))
+			processMu.Lock()
+			switchErr := whisperSrv.Switch(ctx, path)
+			if switchErr == nil {
+				client.ResetEndpoint()
+			}
+			processMu.Unlock()
+			if switchErr != nil {
+				logger.Warn("switch whisper model", "id", model.ID, "error", switchErr)
+				ui.SetStatusLine("Status: Idle")
+				ui.SetModelMenuEnabled(true)
+				continue
+			}
+
+			ui.SetModelCheckmark(model.ID)
+			ui.SetModelPresets(buildModelPresets(), model.ID)
+			ui.SetStatusLine("Status: Idle")
+			ui.SetModelMenuEnabled(true)
+			if err := config.SavePref(func(p *config.Prefs) { p.Model = model.ID }); err != nil {
+				logger.Warn("save prefs", "field", "model", "error", err)
+			}
+			fmt.Printf("Model changed to %s\n", model.Label)
 		}
 	}
 }
@@ -500,11 +625,13 @@ func runSetup() {
 	// Step 3: AI features.
 	fmt.Println("[3/3] AI Features")
 	if os.Getenv("ANTHROPIC_API_KEY") != "" {
-		fmt.Println("  ANTHROPIC_API_KEY: set")
-		fmt.Println("  Run 'vox config' to enable AI features (post-processing, prompt mode, etc.)")
+		fmt.Println("  Anthropic API key: set (via ANTHROPIC_API_KEY env var)")
 	} else {
-		fmt.Println("  ANTHROPIC_API_KEY: not set (AI features disabled)")
-		fmt.Println("  Set ANTHROPIC_API_KEY to enable AI post-processing, prompt mode, and voice commands.")
+		fmt.Println("  Anthropic API key: not set via env var")
+		fmt.Println("  AI features can be enabled by any of:")
+		fmt.Println("    - ANTHROPIC_API_KEY env var (personal key)")
+		fmt.Println("    - vox-anthropic-key LD flag (team-managed key)")
+		fmt.Println("    - ~/.vox/config.yaml anthropic_key field")
 	}
 	if os.Getenv("VOX_LD_SDK_KEY") != "" {
 		fmt.Println("  VOX_LD_SDK_KEY:   set (LaunchDarkly flag control enabled)")

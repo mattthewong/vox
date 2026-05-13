@@ -23,13 +23,22 @@ const (
 	KeyContextAware     = "vox-context-aware"
 	KeyStreamingOverlay = "vox-streaming-overlay"
 	KeyAIModel          = "vox-ai-model"
+	KeyAnthropicKey     = "vox-anthropic-key"
 )
+
+// ldClient is the subset of the LD SDK we use, extracted as an interface so
+// unit tests can supply a stub without a running LD server.
+type ldClient interface {
+	BoolVariationDetailCtx(ctx context.Context, key string, evalCtx ldcontext.Context, defaultVal bool) (bool, ldreason.EvaluationDetail, error)
+	StringVariationDetailCtx(ctx context.Context, key string, evalCtx ldcontext.Context, defaultVal string) (string, ldreason.EvaluationDetail, error)
+	Close() error
+}
 
 // Client wraps the LD SDK client with Vox-specific flag helpers.
 // When the underlying LD client is nil (no SDK key), all evaluations
 // fall back to the user config file and environment variables.
 type Client struct {
-	ld      *ld.LDClient
+	ld      ldClient
 	ctx     ldcontext.Context
 	userCfg userconfig.Config
 }
@@ -136,6 +145,37 @@ func (c *Client) AIModel() string {
 		return *c.userCfg.AIModel
 	}
 	return defaultModel
+}
+
+// AnthropicKey returns the Anthropic API key to use and which source it came from.
+// Precedence: ANTHROPIC_API_KEY env > vox-anthropic-key LD flag > config file > empty.
+//
+// NOTE: The precedence here is intentionally INVERTED from other flag helpers
+// (AIModel, boolFlag, etc.) which use LD > env > config. For a secret like an
+// API key, a personal env-var override must beat the team-managed LD value so
+// individual developers can use their own key when needed.
+//
+// The LD flag enables a team admin to set the key centrally so individual
+// developers don't need personal API keys or Anthropic accounts.
+func (c *Client) AnthropicKey() (key, source string) {
+	// Env var always wins -- allows personal override.
+	if v := os.Getenv("ANTHROPIC_API_KEY"); v != "" {
+		return v, "env"
+	}
+	// LD flag -- team-managed key.
+	if c.ld != nil {
+		val, detail, _ := c.ld.StringVariationDetailCtx(
+			context.Background(), KeyAnthropicKey, c.ctx, "",
+		)
+		if detail.Reason.GetKind() != ldreason.EvalReasonError && val != "" {
+			return val, "ld_flag"
+		}
+	}
+	// Config file.
+	if c.userCfg.AnthropicKey != nil && *c.userCfg.AnthropicKey != "" {
+		return *c.userCfg.AnthropicKey, "config_file"
+	}
+	return "", ""
 }
 
 // boolFlag evaluates a boolean flag with the precedence chain:

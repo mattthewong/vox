@@ -39,7 +39,10 @@ func TestSavePref_ConcurrentMutationsPreserveBothFields(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < iterations; i++ {
 			val := i%2 == 0
-			if err := SavePref(func(p *Prefs) { p.SoundsEnabled = BoolPtr(val) }); err != nil {
+			if err := SavePref(func(p *Prefs) {
+				p.SoundsEnabled = BoolPtr(val)
+				p.Model = "small.en"
+			}); err != nil {
 				t.Errorf("SavePref sounds: %v", err)
 				return
 			}
@@ -61,5 +64,8 @@ func TestSavePref_ConcurrentMutationsPreserveBothFields(t *testing.T) {
 	}
 	if got.SoundsEnabled == nil {
 		t.Error("SoundsEnabled lost across concurrent saves: got nil")
+	}
+	if got.Model == "" {
+		t.Error("Model lost across concurrent saves: got empty string")
 	}
 }

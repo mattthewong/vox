@@ -6,11 +6,11 @@ import (
 	"strings"
 
 	"vox/internal/hotkey"
+	"vox/internal/whispermodel"
 )
 
 // Config holds runtime configuration for the vox dictation tool.
 type Config struct {
-	WhisperURL    string
 	Language      string
 	HoldToTalk    bool
 	SoundsEnabled bool
@@ -20,6 +20,7 @@ type Config struct {
 	Triggers      []hotkey.Trigger
 	VocabTerms    string // Comma-separated domain terms (VOX_VOCAB_TERMS)
 	VocabFile     string // Path to vocab file, one term per line (VOX_VOCAB_FILE)
+	ModelID       string
 }
 
 // Load reads configuration from environment variables and the user
@@ -58,9 +59,15 @@ func Load() Config {
 	if v := os.Getenv("VOX_HOLD_TO_TALK"); v != "" {
 		holdToTalk = parseBool(v, true)
 	}
+	modelID := os.Getenv("VOX_WHISPER_MODEL_ID")
+	if modelID == "" {
+		modelID = prefs.Model
+	}
+	if _, ok := whispermodel.ByID(modelID); !ok {
+		modelID = whispermodel.DefaultID
+	}
 
 	return Config{
-		WhisperURL:    envOrDefault("WHISPER_URL", "http://127.0.0.1:2022"),
 		Language:      os.Getenv("VOX_LANGUAGE"),
 		HoldToTalk:    holdToTalk,
 		SoundsEnabled: BoolOr(prefs.SoundsEnabled, true),
@@ -70,6 +77,7 @@ func Load() Config {
 		Triggers:      triggers,
 		VocabTerms:    os.Getenv("VOX_VOCAB_TERMS"),
 		VocabFile:     os.Getenv("VOX_VOCAB_FILE"),
+		ModelID:       modelID,
 	}
 }
 
@@ -95,16 +103,9 @@ func (c Config) String() string {
 	}
 
 	return fmt.Sprintf(
-		"WhisperURL=%s Language=%s Mode=%s Hotkey=%s Verbose=%t",
-		c.WhisperURL, lang, mode, hk, c.Verbose,
+		"Language=%s Mode=%s Hotkey=%s Model=%s Verbose=%t",
+		lang, mode, hk, c.ModelID, c.Verbose,
 	)
-}
-
-func envOrDefault(key, defaultVal string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return defaultVal
 }
 
 func parseBool(raw string, defaultVal bool) bool {

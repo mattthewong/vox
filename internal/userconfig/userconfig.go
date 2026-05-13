@@ -20,6 +20,7 @@ type Config struct {
 	ContextAware     *bool   `yaml:"context_aware,omitempty"`
 	StreamingOverlay *bool   `yaml:"streaming_overlay,omitempty"`
 	AIModel          *string `yaml:"ai_model,omitempty"`
+	AnthropicKey     *string `yaml:"anthropic_key,omitempty"`
 }
 
 // Path returns the full path to the config file (~/.vox/config.yaml).

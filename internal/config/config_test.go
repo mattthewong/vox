@@ -9,7 +9,6 @@ import (
 )
 
 func TestLoadDefaults(t *testing.T) {
-	t.Setenv("WHISPER_URL", "")
 	t.Setenv("VOX_LANGUAGE", "")
 	t.Setenv("VOX_HOLD_TO_TALK", "")
 	t.Setenv("VOX_VERBOSE", "")
@@ -18,9 +17,6 @@ func TestLoadDefaults(t *testing.T) {
 
 	cfg := Load()
 
-	if cfg.WhisperURL != "http://127.0.0.1:2022" {
-		t.Errorf("WhisperURL = %q, want %q", cfg.WhisperURL, "http://127.0.0.1:2022")
-	}
 	if cfg.Language != "" {
 		t.Errorf("Language = %q, want %q", cfg.Language, "")
 	}
@@ -33,20 +29,20 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Hotkey != "option+space" {
 		t.Errorf("Hotkey = %q, want %q", cfg.Hotkey, "option+space")
 	}
+	if cfg.ModelID != "base.en" {
+		t.Errorf("ModelID = %q, want %q", cfg.ModelID, "base.en")
+	}
 }
 
 func TestLoadFromEnv(t *testing.T) {
-	t.Setenv("WHISPER_URL", "http://example.com:9000")
 	t.Setenv("VOX_LANGUAGE", "en")
 	t.Setenv("VOX_HOLD_TO_TALK", "false")
 	t.Setenv("VOX_VERBOSE", "true")
 	t.Setenv("VOX_HOTKEY", "cmd+shift")
+	t.Setenv("VOX_WHISPER_MODEL_ID", "small.en")
 
 	cfg := Load()
 
-	if cfg.WhisperURL != "http://example.com:9000" {
-		t.Errorf("WhisperURL = %q, want %q", cfg.WhisperURL, "http://example.com:9000")
-	}
 	if cfg.Language != "en" {
 		t.Errorf("Language = %q, want %q", cfg.Language, "en")
 	}
@@ -55,6 +51,9 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if !cfg.Verbose {
 		t.Error("Verbose = false, want true")
+	}
+	if cfg.ModelID != "small.en" {
+		t.Errorf("ModelID = %q, want %q", cfg.ModelID, "small.en")
 	}
 }
 
@@ -81,14 +80,14 @@ func TestBoolParsing(t *testing.T) {
 
 func TestConfigString(t *testing.T) {
 	cfg := Config{
-		WhisperURL: "http://localhost:2022",
 		Language:   "en",
 		HoldToTalk: true,
+		ModelID:    "base.en",
 		Verbose:    false,
 		Triggers:   []hotkey.Trigger{{Label: "Option+Space"}},
 	}
 	s := cfg.String()
-	for _, substr := range []string{"http://localhost:2022", "en", "hold-to-talk", "Option+Space"} {
+	for _, substr := range []string{"en", "hold-to-talk", "Option+Space", "base.en"} {
 		if !strings.Contains(s, substr) {
 			t.Errorf("String() = %q, missing %q", s, substr)
 		}

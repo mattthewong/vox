@@ -12,6 +12,8 @@ static NSMenuItem    *lastTextItem      = nil;
 static NSMenuItem    *hotkeyLineItem    = nil;
 static NSMenu        *hotkeyPresetsMenu = nil;
 static NSMenuItem    *hotkeyPresetsItem = nil;
+static NSMenu        *modelPresetsMenu  = nil;
+static NSMenuItem    *modelPresetsItem  = nil;
 static NSMenuItem    *pauseItem         = nil;
 static NSMenuItem    *modeHoldItem      = nil;
 static NSMenuItem    *modeToggleItem    = nil;
@@ -36,6 +38,7 @@ static BOOL isPaused = NO;
 - (void)pauseClicked:(id)sender;
 - (void)modeHoldClicked:(id)sender;
 - (void)modeToggleClicked:(id)sender;
+- (void)modelClicked:(id)sender;
 - (void)soundsClicked:(id)sender;
 - (void)autoPasteClicked:(id)sender;
 - (void)aiPostProcessClicked:(id)sender;
@@ -72,6 +75,13 @@ static BOOL isPaused = NO;
 }
 - (void)modeToggleClicked:(id)sender {
     onModeChanged(0);
+}
+- (void)modelClicked:(id)sender {
+    NSMenuItem *item = (NSMenuItem *)sender;
+    NSString *modelID = (NSString *)item.representedObject;
+    if (modelID == nil) return;
+    const char *c = [modelID UTF8String];
+    onModelChosen((char *)c);
 }
 - (void)soundsClicked:(id)sender {
     onSoundsToggled(soundsItem.state == NSControlStateValueOn ? 0 : 1);
@@ -192,6 +202,13 @@ void uiInit(const char *hotkeyLabel) {
         hotkeyPresetsMenu = [[NSMenu alloc] initWithTitle:@"Change Hotkey"];
         [hotkeyPresetsItem setSubmenu:hotkeyPresetsMenu];
         [statusMenu addItem:hotkeyPresetsItem];
+
+        modelPresetsItem = [[NSMenuItem alloc] initWithTitle:@"Whisper Model"
+                                                      action:nil
+                                               keyEquivalent:@""];
+        modelPresetsMenu = [[NSMenu alloc] initWithTitle:@"Whisper Model"];
+        [modelPresetsItem setSubmenu:modelPresetsMenu];
+        [statusMenu addItem:modelPresetsItem];
 
         // --- Mode submenu (radio: Hold to Talk / Toggle) ---
         NSMenuItem *modeItem = [[[NSMenuItem alloc] initWithTitle:@"Mode"
@@ -377,6 +394,55 @@ void uiSetHotkeyCheckmark(const char *spec) {
             BOOL on = [set containsObject:(NSString *)item.representedObject];
             [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
         }
+    });
+}
+
+void uiSetModelPresets(const char **ids, const char **labels, const int *installed, int count, const char *current) {
+    NSMutableArray<NSString *> *idArr = [NSMutableArray arrayWithCapacity:count];
+    NSMutableArray<NSString *> *labelArr = [NSMutableArray arrayWithCapacity:count];
+    NSMutableArray<NSNumber *> *installedArr = [NSMutableArray arrayWithCapacity:count];
+    for (int i = 0; i < count; i++) {
+        [idArr addObject:[NSString stringWithUTF8String:ids[i]]];
+        [labelArr addObject:[NSString stringWithUTF8String:labels[i]]];
+        [installedArr addObject:[NSNumber numberWithInt:installed[i]]];
+    }
+    NSString *curr = current ? [NSString stringWithUTF8String:current] : @"";
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [modelPresetsMenu removeAllItems];
+        for (NSUInteger i = 0; i < idArr.count; i++) {
+            NSString *title = labelArr[i];
+            if (![installedArr[i] boolValue]) {
+                title = [title stringByAppendingString:@" (not downloaded)"];
+            }
+            NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:title
+                                                          action:@selector(modelClicked:)
+                                                   keyEquivalent:@""];
+            [item setTarget:appDelegate];
+            [item setRepresentedObject:idArr[i]];
+            if ([curr isEqualToString:idArr[i]]) {
+                [item setState:NSControlStateValueOn];
+            }
+            [modelPresetsMenu addItem:item];
+        }
+    });
+}
+
+void uiSetModelCheckmark(const char *id) {
+    char *copy = strdup(id);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSString *selected = [NSString stringWithUTF8String:copy];
+        free(copy);
+        for (NSMenuItem *item in modelPresetsMenu.itemArray) {
+            NSString *itemID = (NSString *)item.representedObject;
+            BOOL on = [selected isEqualToString:itemID];
+            [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
+        }
+    });
+}
+
+void uiSetModelMenuEnabled(int on) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [modelPresetsItem setEnabled:on ? YES : NO];
     });
 }
 

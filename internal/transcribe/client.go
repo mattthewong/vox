@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,6 +21,7 @@ type Client struct {
 	whisperURL string
 	httpClient *http.Client
 	endpoint   string // cached resolved endpoint
+	mu         sync.RWMutex
 }
 
 // NewClient creates a new transcription client. If whisperURL is empty, it
@@ -99,25 +101,24 @@ func (c *Client) Transcribe(ctx context.Context, wavData []byte, opts Transcribe
 
 	// Try OpenAI-compatible endpoint first, fall back to whisper.cpp /inference.
 	endpoint := c.resolveEndpoint(ctx)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, &body)
+	contentType := writer.FormDataContentType()
+	requestBody := body.Bytes()
+	respBody, statusCode, err := c.sendTranscribeRequest(ctx, endpoint, contentType, requestBody)
 	if err != nil {
-		return "", fmt.Errorf("create request: %w", err)
+		return "", err
 	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("send transcription request: %w", err)
+	if statusCode != http.StatusOK && endpoint == c.openAIEndpoint() {
+		fallback := c.inferenceEndpoint()
+		respBody, statusCode, err = c.sendTranscribeRequest(ctx, fallback, contentType, requestBody)
+		if err != nil {
+			return "", err
+		}
+		if statusCode == http.StatusOK {
+			c.setEndpoint(fallback)
+		}
 	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("read response body: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("whisper API returned status %d: %s", resp.StatusCode, truncate(respBody, 512))
+	if statusCode != http.StatusOK {
+		return "", fmt.Errorf("whisper API returned status %d: %s", statusCode, truncate(respBody, 512))
 	}
 
 	var result transcriptionResponse
@@ -154,34 +155,87 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 // resolveEndpoint detects whether the server supports the OpenAI-compatible
 // endpoint or the whisper.cpp /inference endpoint. Caches the result.
 func (c *Client) resolveEndpoint(ctx context.Context) string {
+	c.mu.RLock()
 	if c.endpoint != "" {
-		return c.endpoint
+		ep := c.endpoint
+		c.mu.RUnlock()
+		return ep
 	}
+	c.mu.RUnlock()
 
-	// Probe /v1/audio/transcriptions with OPTIONS/HEAD — if it 404s, use /inference.
-	openaiURL := c.whisperURL + "/v1/audio/transcriptions"
-	inferenceURL := c.whisperURL + "/inference"
+	// Probe /v1/audio/transcriptions. If unavailable, use /inference.
+	openaiURL := c.openAIEndpoint()
+	inferenceURL := c.inferenceEndpoint()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openaiURL, nil)
 	if err != nil {
+		c.mu.Lock()
 		c.endpoint = inferenceURL
-		return c.endpoint
+		ep := c.endpoint
+		c.mu.Unlock()
+		return ep
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		c.mu.Lock()
 		c.endpoint = inferenceURL
-		return c.endpoint
+		ep := c.endpoint
+		c.mu.Unlock()
+		return ep
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
 
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if resp.StatusCode == http.StatusNotFound {
 		c.endpoint = inferenceURL
 	} else {
 		c.endpoint = openaiURL
 	}
 	return c.endpoint
+}
+
+// ResetEndpoint clears endpoint autodetection cache. Call this when the
+// server restarts or changes implementation while keeping the same base URL.
+func (c *Client) ResetEndpoint() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.endpoint = ""
+}
+
+func (c *Client) sendTranscribeRequest(ctx context.Context, endpoint, contentType string, payload []byte) ([]byte, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return nil, 0, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", contentType)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("send transcription request: %w", err)
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, 0, fmt.Errorf("read response body: %w", err)
+	}
+	return respBody, resp.StatusCode, nil
+}
+
+func (c *Client) openAIEndpoint() string {
+	return c.whisperURL + "/v1/audio/transcriptions"
+}
+
+func (c *Client) inferenceEndpoint() string {
+	return c.whisperURL + "/inference"
+}
+
+func (c *Client) setEndpoint(endpoint string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.endpoint = endpoint
 }
 
 // truncate returns a string of at most max bytes from b, for use in error messages.

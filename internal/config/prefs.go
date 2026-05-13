@@ -24,6 +24,7 @@ type Prefs struct {
 	PromptMode    *bool  `json:"prompt_mode,omitempty"`
 	VoiceCommands *bool  `json:"voice_commands,omitempty"`
 	ContextAware  *bool  `json:"context_aware,omitempty"`
+	Model         string `json:"model,omitempty"`
 }
 
 // BoolPtr is a small helper for callers building Prefs literals.

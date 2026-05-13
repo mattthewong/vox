@@ -41,7 +41,7 @@ make start
 1. Install missing system deps (`sox`, `whisper-cpp`) via Homebrew.
 2. Download the default Whisper model (~150MB) into `~/.local/share/whisper-cpp/` if missing.
 3. Build `bin/Vox.app` and ad-hoc codesign it.
-4. Launch `whisper-server` and `Vox.app` detached — both keep running after you close the terminal.
+4. Launch `Vox.app` detached. Vox manages `whisper-server` itself when using the default local URL.
 
 The first launch will trigger two macOS permission prompts (Microphone and Accessibility); grant both and you're done. Re-running `make start` after the first time is a near-instant rebuild + launch, since `setup` is idempotent.
 
@@ -74,12 +74,12 @@ vox
 
 ```bash
 make start    # ensures deps, builds Vox.app, launches whisper-server + Vox detached
-make stop     # cleanly tears both down
-make status   # shows whether each is running
+make stop     # stops Vox (its managed whisper child exits with it)
+make status   # shows whether Vox is running
 tail -f logs/vox.log
 ```
 
-`make start` runs `setup` (idempotent install of deps + model) and `app` (builds and signs `bin/Vox.app`), then launches `Vox.app/Contents/MacOS/vox` and `whisper-server` detached via `nohup`. PIDs land in `logs/vox.pid` and `logs/whisper.pid`, all output redirects to `logs/*.log`, and the command returns immediately -- you can close the terminal and vox keeps running in your menubar. To shut it down either click the menubar icon and choose **Quit Vox**, or run `make stop`.
+`make start` runs `setup` (idempotent install of deps + default base model) and `app` (builds and signs `bin/Vox.app`), then launches `Vox.app/Contents/MacOS/vox` detached via `nohup`. Vox spawns and manages its own `whisper-server` child on `127.0.0.1:2022` -- there's no remote-server mode. PID lands in `logs/vox.pid`, output redirects to `logs/*.log`, and the command returns immediately -- you can close the terminal and Vox keeps running in your menubar. To shut it down either click the menubar icon and choose **Quit Vox**, or run `make stop`.
 
 ## macOS permissions
 
@@ -97,14 +97,14 @@ All via environment variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `VOX_HOTKEY` | `option+space` | Hotkey to trigger recording. Comma-separated for multiple. |
-| `WHISPER_URL` | `http://127.0.0.1:2022` | Whisper server URL |
+| `VOX_WHISPER_MODEL_ID` | `base.en` | Initial model ID (`tiny.en`, `base.en`, `small.en`, `medium.en`, `large-v3-turbo`) |
 | `VOX_HOLD_TO_TALK` | `true` | `true` = hold to record, `false` = toggle on/off |
 | `VOX_LANGUAGE` | *(auto-detect)* | BCP-47 language code (e.g. `en`, `es`) |
 | `VOX_VERBOSE` | `false` | Debug logging |
 | `VOX_LOG_PATH` | *(unset)* | If set, the file at this path is deleted on clean shutdown. `make start` points this at `logs/vox.log`. |
 | `VOX_PID_PATH` | *(unset)* | If set, the file at this path is deleted on clean shutdown. `make start` points this at `logs/vox.pid`. |
 
-Toggles set via the menubar (Mode, Play sounds, Auto-paste, Change Hotkey) are persisted to `~/Library/Application Support/Vox/preferences.json`. Env vars take precedence over the preferences file, which takes precedence over compiled-in defaults.
+Toggles set via the menubar (Mode, Play sounds, Auto-paste, Change Hotkey, Whisper Model) are persisted to `~/Library/Application Support/Vox/preferences.json`. Env vars take precedence over the preferences file, which takes precedence over compiled-in defaults.
 
 ### Hotkey formats
 

@@ -1,10 +1,42 @@
 package flags
 
 import (
+	"context"
 	"testing"
+
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
+	"github.com/launchdarkly/go-sdk-common/v3/ldreason"
 
 	"vox/internal/userconfig"
 )
+
+// mockLDClient is a minimal stub for testing LD flag evaluation paths.
+type mockLDClient struct {
+	stringVal    string
+	stringDetail ldreason.EvaluationDetail
+	stringErr    error
+	boolVal      bool
+	boolDetail   ldreason.EvaluationDetail
+	boolErr      error
+}
+
+func (m *mockLDClient) StringVariationDetailCtx(_ context.Context, _ string, _ ldcontext.Context, _ string) (string, ldreason.EvaluationDetail, error) {
+	return m.stringVal, m.stringDetail, m.stringErr
+}
+
+func (m *mockLDClient) BoolVariationDetailCtx(_ context.Context, _ string, _ ldcontext.Context, _ bool) (bool, ldreason.EvaluationDetail, error) {
+	return m.boolVal, m.boolDetail, m.boolErr
+}
+
+func (m *mockLDClient) Close() error { return nil }
+
+func successDetail() ldreason.EvaluationDetail {
+	return ldreason.EvaluationDetail{Reason: ldreason.NewEvalReasonFallthrough()}
+}
+
+func errorDetail() ldreason.EvaluationDetail {
+	return ldreason.EvaluationDetail{Reason: ldreason.NewEvalReasonError(ldreason.EvalErrorFlagNotFound)}
+}
 
 func TestBoolFlagPrecedence(t *testing.T) {
 	c := &Client{userCfg: userconfig.Config{}}
@@ -40,13 +72,9 @@ func TestBoolFlagPrecedence(t *testing.T) {
 	}
 }
 
-// NOTE: Testing the LD-active precedence path (c.ld != nil) requires either
-// a running LD server or a test harness / mock. Since vox is a lightweight
-// CLI tool, we verify the LD path via the BoolVariationDetailCtx contract:
-// - EvalReasonError (flag not found) -> falls through to env/config
-// - Any other reason (flag evaluated) -> returns the LD value
-// The nil-client tests above cover the env > config > default chain.
-// Integration testing with a real SDK key covers the LD path.
+// NOTE: The LD-active path (c.ld != nil) is tested via mockLDClient (see
+// TestAnthropicKeyLDPrecedence). The nil-client tests above cover the
+// env > config > default fallback chain.
 
 func TestAIModelPrecedence(t *testing.T) {
 	c := &Client{userCfg: userconfig.Config{}}
@@ -70,6 +98,95 @@ func TestAIModelPrecedence(t *testing.T) {
 	}
 }
 
+func TestAnthropicKeyPrecedence(t *testing.T) {
+	// Clear any real ANTHROPIC_API_KEY so it doesn't interfere.
+	t.Setenv("ANTHROPIC_API_KEY", "")
+
+	c := &Client{userCfg: userconfig.Config{}}
+
+	// Default: empty (no key configured).
+	if key, src := c.AnthropicKey(); key != "" || src != "" {
+		t.Errorf("AnthropicKey() = (%q, %q), want empty", key, src)
+	}
+
+	// Config file.
+	cfgKey := "sk-config-key"
+	c.userCfg.AnthropicKey = &cfgKey
+	if key, src := c.AnthropicKey(); key != "sk-config-key" || src != "config_file" {
+		t.Errorf("AnthropicKey() = (%q, %q), want (sk-config-key, config_file)", key, src)
+	}
+
+	// Env var overrides config.
+	t.Setenv("ANTHROPIC_API_KEY", "sk-env-key")
+	if key, src := c.AnthropicKey(); key != "sk-env-key" || src != "env" {
+		t.Errorf("AnthropicKey() = (%q, %q), want (sk-env-key, env)", key, src)
+	}
+}
+
+func TestAnthropicKeyLDPrecedence(t *testing.T) {
+	// Clear any real ANTHROPIC_API_KEY so it doesn't interfere.
+	t.Setenv("ANTHROPIC_API_KEY", "")
+
+	cfgKey := "sk-config-key"
+
+	t.Run("LD flag overrides config file", func(t *testing.T) {
+		c := &Client{
+			ld: &mockLDClient{
+				stringVal:    "sk-ld-team-key",
+				stringDetail: successDetail(),
+			},
+			userCfg: userconfig.Config{AnthropicKey: &cfgKey},
+		}
+		key, src := c.AnthropicKey()
+		if key != "sk-ld-team-key" || src != "ld_flag" {
+			t.Errorf("AnthropicKey() = (%q, %q), want (sk-ld-team-key, ld_flag)", key, src)
+		}
+	})
+
+	t.Run("env var overrides LD flag", func(t *testing.T) {
+		t.Setenv("ANTHROPIC_API_KEY", "sk-env-key")
+		c := &Client{
+			ld: &mockLDClient{
+				stringVal:    "sk-ld-team-key",
+				stringDetail: successDetail(),
+			},
+			userCfg: userconfig.Config{AnthropicKey: &cfgKey},
+		}
+		key, src := c.AnthropicKey()
+		if key != "sk-env-key" || src != "env" {
+			t.Errorf("AnthropicKey() = (%q, %q), want (sk-env-key, env)", key, src)
+		}
+	})
+
+	t.Run("LD error falls through to config", func(t *testing.T) {
+		c := &Client{
+			ld: &mockLDClient{
+				stringVal:    "",
+				stringDetail: errorDetail(),
+			},
+			userCfg: userconfig.Config{AnthropicKey: &cfgKey},
+		}
+		key, src := c.AnthropicKey()
+		if key != "sk-config-key" || src != "config_file" {
+			t.Errorf("AnthropicKey() = (%q, %q), want (sk-config-key, config_file)", key, src)
+		}
+	})
+
+	t.Run("LD returns empty string falls through to config", func(t *testing.T) {
+		c := &Client{
+			ld: &mockLDClient{
+				stringVal:    "",
+				stringDetail: successDetail(),
+			},
+			userCfg: userconfig.Config{AnthropicKey: &cfgKey},
+		}
+		key, src := c.AnthropicKey()
+		if key != "sk-config-key" || src != "config_file" {
+			t.Errorf("AnthropicKey() = (%q, %q), want (sk-config-key, config_file)", key, src)
+		}
+	})
+}
+
 func TestNilClientGraceful(t *testing.T) {
 	// All methods should work with a nil LD client.
 	c := &Client{userCfg: userconfig.Config{}}
@@ -80,6 +197,7 @@ func TestNilClientGraceful(t *testing.T) {
 	_ = c.ContextAware()
 	_ = c.StreamingOverlay()
 	_ = c.AIModel()
+	_, _ = c.AnthropicKey()
 	c.Close() // should not panic
 }
 
@@ -131,6 +249,7 @@ func TestFlagKeyConstants(t *testing.T) {
 		KeyContextAware,
 		KeyStreamingOverlay,
 		KeyAIModel,
+		KeyAnthropicKey,
 	}
 	for _, k := range keys {
 		if k == "" {

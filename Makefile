@@ -69,21 +69,13 @@ setup:
 	fi
 
 # start is the one-command entry point: ensures system deps (`setup`), builds
-# the .app bundle (`app`), and launches whisper-server + Vox detached so the
-# terminal can close. Quit via the menubar (Vox → Quit Vox) or `make stop`.
+# the .app bundle (`app`), and launches Vox detached so the terminal can
+# close. Vox manages whisper-server internally when using the default local URL.
 start: setup app
 	@set -eu; \
-	MODEL="$${WHISPER_MODEL:-$$HOME/.local/share/whisper-cpp/ggml-base.en.bin}"; \
 	mkdir -p logs; \
-	command -v whisper-server >/dev/null || { echo "whisper-server not found. Run: make setup"; exit 1; }; \
-	[ -f "$$MODEL" ] || { echo "Whisper model not found: $$MODEL"; exit 1; }; \
 	if [ -f logs/vox.pid ] && kill -0 "$$(cat logs/vox.pid)" 2>/dev/null; then \
 		echo "Vox already running (pid $$(cat logs/vox.pid)). Run: make stop"; exit 1; \
-	fi; \
-	if ! { [ -f logs/whisper.pid ] && kill -0 "$$(cat logs/whisper.pid)" 2>/dev/null; }; then \
-		nohup whisper-server --host 127.0.0.1 --port 2022 --model "$$MODEL" >logs/whisper.log 2>&1 & \
-		echo $$! > logs/whisper.pid; \
-		echo "🚀 whisper-server (pid $$!)"; \
 	fi; \
 	VOX_LOG_PATH="$$(pwd)/logs/vox.log" \
 	VOX_PID_PATH="$$(pwd)/logs/vox.pid" \
@@ -92,23 +84,19 @@ start: setup app
 	echo "✅ Vox running (pid $$!) — look for it in the menubar (logs/vox.log)"
 
 stop:
-	@for name in vox whisper; do \
-		pid="$$(cat logs/$$name.pid 2>/dev/null)" || true; \
-		if [ -n "$$pid" ] && ps -p "$$pid" -o comm= 2>/dev/null | grep -q "$$name" && kill "$$pid" 2>/dev/null; then \
-			echo "stopped $$name (pid $$pid)"; \
-		fi; \
-		rm -f logs/$$name.pid logs/$$name.log; \
-	done
+	@pid="$$(cat logs/vox.pid 2>/dev/null)" || true; \
+	if [ -n "$$pid" ] && ps -p "$$pid" -o comm= 2>/dev/null | grep -q "vox" && kill "$$pid" 2>/dev/null; then \
+		echo "stopped vox (pid $$pid)"; \
+	fi; \
+	rm -f logs/vox.pid logs/vox.log logs/whisper.log
 
 status:
-	@for name in vox whisper; do \
-		pid="$$(cat logs/$$name.pid 2>/dev/null)" || true; \
-		if [ -n "$$pid" ] && kill -0 "$$pid" 2>/dev/null; then \
-			echo "$$name: running (pid $$pid)"; \
-		else \
-			echo "$$name: not running"; \
-		fi; \
-	done
+	@pid="$$(cat logs/vox.pid 2>/dev/null)" || true; \
+	if [ -n "$$pid" ] && kill -0 "$$pid" 2>/dev/null; then \
+		echo "vox: running (pid $$pid)"; \
+	else \
+		echo "vox: not running"; \
+	fi
 
 clean:
 	rm -rf bin/

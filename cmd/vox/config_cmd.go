@@ -42,7 +42,8 @@ func runConfig() {
 	}
 	fmt.Println()
 	fmt.Println("Note: Set VOX_LD_SDK_KEY to enable LaunchDarkly flag overrides.")
-	fmt.Println("Note: Set ANTHROPIC_API_KEY to enable AI features.")
+	fmt.Println("Note: AI features require an Anthropic API key from any source:")
+	fmt.Println("  ANTHROPIC_API_KEY env var, vox-anthropic-key LD flag, or anthropic_key in this config.")
 }
 
 func promptBool(reader *bufio.Reader, label string, current *bool) bool {

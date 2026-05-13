@@ -18,6 +18,9 @@ void uiSetLastText(const char *text);
 void uiSetHotkeyPresets(const char **specs, const char **labels, int count, const char *current);
 void uiSetHotkeyCheckmark(const char *spec);
 void uiSetHotkeyLabel(const char *label);
+void uiSetModelPresets(const char **ids, const char **labels, const int *installed, int count, const char *current);
+void uiSetModelCheckmark(const char *id);
+void uiSetModelMenuEnabled(int on);
 void uiSetPaused(int on);
 void uiSetMode(int holdToTalk);
 void uiSetSoundsEnabled(int on);
@@ -54,6 +57,7 @@ var (
 	quitCh          = make(chan struct{}, 1)
 	showLogCh       = make(chan struct{}, 1)
 	hotkeyCh        = make(chan string, 1)
+	modelCh         = make(chan string, 1)
 	pauseCh         = make(chan bool, 1)
 	modeCh          = make(chan bool, 1) // true = hold-to-talk, false = toggle
 	soundsCh        = make(chan bool, 1)
@@ -70,6 +74,13 @@ var (
 type HotkeyPreset struct {
 	Spec  string
 	Label string
+}
+
+// ModelPreset describes one selectable whisper model in the menubar.
+type ModelPreset struct {
+	ID        string
+	Label     string
+	Installed bool
 }
 
 // Init creates the NSStatusItem and prepares the NSApp activation policy.
@@ -114,6 +125,11 @@ func SetLastText(text string) {
 	C.uiSetLastText(c)
 }
 
+// SetStatusLine overrides the first disabled status row in the menu.
+func SetStatusLine(text string) {
+	setStatusLine(text)
+}
+
 // Run blocks the calling goroutine while NSApp's main event loop runs on the
 // OS main thread. Cocoa requires [NSApp run] to be invoked on the main
 // thread; we marshal the cgo call there via mainthread.Call. Returns when
@@ -142,6 +158,10 @@ func OnShowLog() <-chan struct{} { return showLogCh }
 // OnHotkeyChange returns a channel that receives the hotkey spec
 // (e.g. "option+space") the user picked from the "Change Hotkey" submenu.
 func OnHotkeyChange() <-chan string { return hotkeyCh }
+
+// OnModelChange returns a channel that receives the model ID (e.g. "base.en")
+// picked from the "Whisper Model" submenu.
+func OnModelChange() <-chan string { return modelCh }
 
 // SetHotkeyPresets populates the "Change Hotkey" submenu. current is the
 // spec that should display a checkmark on init (empty = no checkmark).
@@ -185,6 +205,46 @@ func SetHotkeyLabel(label string) {
 	defer C.free(unsafe.Pointer(c))
 	C.uiSetHotkeyLabel(c)
 }
+
+// SetModelPresets populates the "Whisper Model" submenu.
+func SetModelPresets(presets []ModelPreset, current string) {
+	if len(presets) == 0 {
+		return
+	}
+	ids := make([]*C.char, len(presets))
+	labels := make([]*C.char, len(presets))
+	installed := make([]C.int, len(presets))
+	for i, p := range presets {
+		ids[i] = C.CString(p.ID)
+		labels[i] = C.CString(p.Label)
+		installed[i] = boolToC(p.Installed)
+	}
+	defer func() {
+		for i := range ids {
+			C.free(unsafe.Pointer(ids[i]))
+			C.free(unsafe.Pointer(labels[i]))
+		}
+	}()
+	curr := C.CString(current)
+	defer C.free(unsafe.Pointer(curr))
+	C.uiSetModelPresets(
+		(**C.char)(unsafe.Pointer(&ids[0])),
+		(**C.char)(unsafe.Pointer(&labels[0])),
+		(*C.int)(unsafe.Pointer(&installed[0])),
+		C.int(len(presets)),
+		curr,
+	)
+}
+
+// SetModelCheckmark moves the checkmark in the "Whisper Model" submenu.
+func SetModelCheckmark(id string) {
+	c := C.CString(id)
+	defer C.free(unsafe.Pointer(c))
+	C.uiSetModelCheckmark(c)
+}
+
+// SetModelMenuEnabled toggles whether the model submenu can be clicked.
+func SetModelMenuEnabled(on bool) { C.uiSetModelMenuEnabled(boolToC(on)) }
 
 // SetPaused updates the "Pause Vox" / "Resume Vox" menu item and dims the
 // menubar icon (renders as waveform.slash) so vox's disabled state is
@@ -280,6 +340,15 @@ func onHotkeyChosen(spec *C.char) {
 	s := C.GoString(spec)
 	select {
 	case hotkeyCh <- s:
+	default:
+	}
+}
+
+//export onModelChosen
+func onModelChosen(id *C.char) {
+	s := C.GoString(id)
+	select {
+	case modelCh <- s:
 	default:
 	}
 }
