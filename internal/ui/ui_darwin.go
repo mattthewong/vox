@@ -22,6 +22,10 @@ void uiSetPaused(int on);
 void uiSetMode(int holdToTalk);
 void uiSetSoundsEnabled(int on);
 void uiSetAutoPaste(int on);
+void uiSetAIPostProcess(int on);
+void uiSetPromptMode(int on);
+void uiSetVoiceCommands(int on);
+void uiSetContextAware(int on);
 void uiRun(void);
 void uiQuit(void);
 */
@@ -47,13 +51,17 @@ const (
 )
 
 var (
-	quitCh      = make(chan struct{}, 1)
-	showLogCh   = make(chan struct{}, 1)
-	hotkeyCh    = make(chan string, 1)
-	pauseCh     = make(chan bool, 1)
-	modeCh      = make(chan bool, 1) // true = hold-to-talk, false = toggle
-	soundsCh    = make(chan bool, 1)
-	autoPasteCh = make(chan bool, 1)
+	quitCh          = make(chan struct{}, 1)
+	showLogCh       = make(chan struct{}, 1)
+	hotkeyCh        = make(chan string, 1)
+	pauseCh         = make(chan bool, 1)
+	modeCh          = make(chan bool, 1) // true = hold-to-talk, false = toggle
+	soundsCh        = make(chan bool, 1)
+	autoPasteCh     = make(chan bool, 1)
+	aiPostProcessCh = make(chan bool, 1)
+	promptModeCh    = make(chan bool, 1)
+	voiceCommandsCh = make(chan bool, 1)
+	contextAwareCh  = make(chan bool, 1)
 )
 
 // HotkeyPreset describes a selectable hotkey in the "Change Hotkey" submenu.
@@ -206,6 +214,32 @@ func OnSoundsToggle() <-chan bool { return soundsCh }
 // OnAutoPasteToggle returns a channel that receives the new state.
 func OnAutoPasteToggle() <-chan bool { return autoPasteCh }
 
+// --- AI Feature Toggles ---
+
+// SetAIPostProcess updates the "AI post-processing" checkbox.
+func SetAIPostProcess(on bool) { C.uiSetAIPostProcess(boolToC(on)) }
+
+// SetPromptMode updates the "Prompt mode" checkbox.
+func SetPromptMode(on bool) { C.uiSetPromptMode(boolToC(on)) }
+
+// SetVoiceCommands updates the "Voice commands" checkbox.
+func SetVoiceCommands(on bool) { C.uiSetVoiceCommands(boolToC(on)) }
+
+// SetContextAware updates the "Context-aware" checkbox.
+func SetContextAware(on bool) { C.uiSetContextAware(boolToC(on)) }
+
+// OnAIPostProcessToggle returns a channel that receives the new state.
+func OnAIPostProcessToggle() <-chan bool { return aiPostProcessCh }
+
+// OnPromptModeToggle returns a channel that receives the new state.
+func OnPromptModeToggle() <-chan bool { return promptModeCh }
+
+// OnVoiceCommandsToggle returns a channel that receives the new state.
+func OnVoiceCommandsToggle() <-chan bool { return voiceCommandsCh }
+
+// OnContextAwareToggle returns a channel that receives the new state.
+func OnContextAwareToggle() <-chan bool { return contextAwareCh }
+
 func boolToC(b bool) C.int {
 	if b {
 		return 1
@@ -261,6 +295,18 @@ func onSoundsToggled(on C.int) { send(soundsCh, on != 0) }
 
 //export onAutoPasteToggled
 func onAutoPasteToggled(on C.int) { send(autoPasteCh, on != 0) }
+
+//export onAIPostProcessToggled
+func onAIPostProcessToggled(on C.int) { send(aiPostProcessCh, on != 0) }
+
+//export onPromptModeToggled
+func onPromptModeToggled(on C.int) { send(promptModeCh, on != 0) }
+
+//export onVoiceCommandsToggled
+func onVoiceCommandsToggled(on C.int) { send(voiceCommandsCh, on != 0) }
+
+//export onContextAwareToggled
+func onContextAwareToggled(on C.int) { send(contextAwareCh, on != 0) }
 
 func send(ch chan bool, v bool) {
 	select {
