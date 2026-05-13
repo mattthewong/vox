@@ -229,9 +229,9 @@ void uiInit(const char *hotkeyLabel) {
         [statusMenu addItem:[NSMenuItem separatorItem]];
 
         // --- AI Features ---
-        NSMenuItem *aiHeader = [[NSMenuItem alloc] initWithTitle:@"AI Features"
-                                                           action:nil
-                                                    keyEquivalent:@""];
+        NSMenuItem *aiHeader = [[[NSMenuItem alloc] initWithTitle:@"AI Features"
+                                                            action:nil
+                                                     keyEquivalent:@""] autorelease];
         [aiHeader setEnabled:NO];
         [statusMenu addItem:aiHeader];
 
