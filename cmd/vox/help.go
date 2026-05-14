@@ -9,6 +9,7 @@ func runHelp() {
 	fmt.Println("Commands:")
 	fmt.Println("  (none)     Start dictation (default)")
 	fmt.Println("  setup      Check Accessibility + Microphone permissions")
+	fmt.Println("  test       Run self-diagnosis across all subsystems")
 	fmt.Println("  help       Show this help message")
 	fmt.Println("  version    Show version")
 	fmt.Println()

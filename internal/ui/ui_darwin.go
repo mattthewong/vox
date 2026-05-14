@@ -19,6 +19,7 @@ void uiSetHotkeyPresets(const char **specs, const char **labels, int count, cons
 void uiSetHotkeyCheckmark(const char *spec);
 void uiSetHotkeyLabel(const char *label);
 void uiSetModelPresets(const char **ids, const char **labels, const int *installed, int count, const char *current);
+void uiSetModelRemovePresets(const char **ids, const char **labels, const int *removable, int count);
 void uiSetModelCheckmark(const char *id);
 void uiSetModelMenuEnabled(int on);
 void uiSetPaused(int on);
@@ -58,6 +59,7 @@ var (
 	showLogCh       = make(chan struct{}, 1)
 	hotkeyCh        = make(chan string, 1)
 	modelCh         = make(chan string, 1)
+	deleteModelCh   = make(chan string, 1)
 	pauseCh         = make(chan bool, 1)
 	modeCh          = make(chan bool, 1) // true = hold-to-talk, false = toggle
 	soundsCh        = make(chan bool, 1)
@@ -81,6 +83,13 @@ type ModelPreset struct {
 	ID        string
 	Label     string
 	Installed bool
+}
+
+// ModelRemovePreset is one installed model listed under Manage Downloaded Models.
+type ModelRemovePreset struct {
+	ID        string
+	Label     string
+	Removable bool // false when this is the last installed model on disk
 }
 
 // Init creates the NSStatusItem and prepares the NSApp activation policy.
@@ -163,6 +172,10 @@ func OnHotkeyChange() <-chan string { return hotkeyCh }
 // picked from the "Whisper Model" submenu.
 func OnModelChange() <-chan string { return modelCh }
 
+// OnModelDelete returns a channel that receives a model ID after the user
+// confirms removal from the Manage Downloaded Models submenu.
+func OnModelDelete() <-chan string { return deleteModelCh }
+
 // SetHotkeyPresets populates the "Change Hotkey" submenu. current is the
 // spec that should display a checkmark on init (empty = no checkmark).
 func SetHotkeyPresets(presets []HotkeyPreset, current string) {
@@ -233,6 +246,34 @@ func SetModelPresets(presets []ModelPreset, current string) {
 		(*C.int)(unsafe.Pointer(&installed[0])),
 		C.int(len(presets)),
 		curr,
+	)
+}
+
+// SetModelRemovePresets populates the Manage Downloaded Models submenu.
+func SetModelRemovePresets(presets []ModelRemovePreset) {
+	if len(presets) == 0 {
+		C.uiSetModelRemovePresets(nil, nil, nil, 0)
+		return
+	}
+	ids := make([]*C.char, len(presets))
+	labels := make([]*C.char, len(presets))
+	removable := make([]C.int, len(presets))
+	for i, p := range presets {
+		ids[i] = C.CString(p.ID)
+		labels[i] = C.CString(p.Label)
+		removable[i] = boolToC(p.Removable)
+	}
+	defer func() {
+		for i := range ids {
+			C.free(unsafe.Pointer(ids[i]))
+			C.free(unsafe.Pointer(labels[i]))
+		}
+	}()
+	C.uiSetModelRemovePresets(
+		(**C.char)(unsafe.Pointer(&ids[0])),
+		(**C.char)(unsafe.Pointer(&labels[0])),
+		(*C.int)(unsafe.Pointer(&removable[0])),
+		C.int(len(presets)),
 	)
 }
 
@@ -349,6 +390,15 @@ func onModelChosen(id *C.char) {
 	s := C.GoString(id)
 	select {
 	case modelCh <- s:
+	default:
+	}
+}
+
+//export onModelDeleteChosen
+func onModelDeleteChosen(id *C.char) {
+	s := C.GoString(id)
+	select {
+	case deleteModelCh <- s:
 	default:
 	}
 }

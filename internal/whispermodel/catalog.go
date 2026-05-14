@@ -113,6 +113,17 @@ func IsInstalled(m Model) bool {
 	return err == nil && st.Size() > 0
 }
 
+// InstalledCount returns how many catalog models are present on disk.
+func InstalledCount() int {
+	n := 0
+	for _, m := range catalog {
+		if IsInstalled(m) {
+			n++
+		}
+	}
+	return n
+}
+
 func validateChecksum(gotHex, expected string) error {
 	if expected == "" {
 		return fmt.Errorf("missing checksum")

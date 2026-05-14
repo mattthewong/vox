@@ -73,6 +73,14 @@ var settings runtimeSettings
 // pause click, so the user expects that one final transcription to land.
 var processMu sync.Mutex
 
+// currentWhisperModelID holds the catalog model ID (e.g. base.en) loaded by
+// whisper-server so removing a model can switch away from the active file first.
+var currentWhisperModelID atomic.Value // string
+
+// modelMu serializes model-change and model-delete operations so they cannot
+// interleave (e.g. switching to a model while a delete is mid-fallback).
+var modelMu sync.Mutex
+
 func main() {
 	mainthread.Init(run)
 }
@@ -90,6 +98,9 @@ func run() {
 			return
 		case "help", "--help", "-h":
 			runHelp()
+			return
+		case "test":
+			runTest()
 			return
 		case "version", "--version":
 			fmt.Println(version)
@@ -250,7 +261,8 @@ func run() {
 	ui.Init(hotkeyLabel)
 	ui.SetState(ui.StateIdle)
 	ui.SetHotkeyPresets(hotkeyPresets, cfg.Hotkey)
-	ui.SetModelPresets(buildModelPresets(), selectedModel.ID)
+	currentWhisperModelID.Store(selectedModel.ID)
+	refreshModelMenus()
 	ui.SetMode(cfg.HoldToTalk)
 	ui.SetSoundsEnabled(cfg.SoundsEnabled)
 	ui.SetAutoPaste(cfg.AutoPaste)
@@ -312,6 +324,7 @@ func run() {
 	go hotkeyChangeWatcher(ctx, logger, listener)
 	go settingsWatcher(ctx, logger, recorder)
 	go modelChangeWatcher(ctx, logger, whisperClient, whisperSrv)
+	go modelDeleteWatcher(ctx, logger, whisperClient, whisperSrv)
 	go runEventLoop(ctx, cfg, logger, listener, recorder, pipe)
 
 	// Run NSApp's main loop on the main goroutine. Returns when the user
@@ -352,6 +365,74 @@ func buildModelPresets() []ui.ModelPreset {
 		})
 	}
 	return presets
+}
+
+func buildModelRemovePresets() []ui.ModelRemovePreset {
+	var out []ui.ModelRemovePreset
+	nInstalled := whispermodel.InstalledCount()
+	for _, m := range whispermodel.All() {
+		if whispermodel.IsInstalled(m) {
+			label := m.Label
+			if nInstalled <= 1 {
+				label = m.Label + " (required)"
+			}
+			out = append(out, ui.ModelRemovePreset{
+				ID:        m.ID,
+				Label:     label,
+				Removable: nInstalled > 1,
+			})
+		}
+	}
+	return out
+}
+
+func refreshModelMenus() {
+	id, _ := currentWhisperModelID.Load().(string)
+	ui.SetModelPresets(buildModelPresets(), id)
+	ui.SetModelRemovePresets(buildModelRemovePresets())
+}
+
+func activateWhisperModel(ctx context.Context, whisperClient *transcribe.Client, whisperSrv *whisperserver.Server, model whispermodel.Model) error {
+	if !whispermodel.IsInstalled(model) {
+		err := whispermodel.Download(ctx, model, func(downloaded, total int64) {
+			if total > 0 {
+				pct := (downloaded * 100) / total
+				ui.SetStatusLine(fmt.Sprintf("Status: Downloading %s (%d%%)…", model.ID, pct))
+				return
+			}
+			ui.SetStatusLine(fmt.Sprintf("Status: Downloading %s…", model.ID))
+		})
+		if err != nil {
+			return err
+		}
+	}
+	path, err := whispermodel.Path(model)
+	if err != nil {
+		return err
+	}
+	ui.SetStatusLine(fmt.Sprintf("Status: Switching to %s…", model.ID))
+	processMu.Lock()
+	defer processMu.Unlock()
+	switchErr := whisperSrv.Switch(ctx, path)
+	if switchErr == nil {
+		whisperClient.ResetEndpoint()
+	}
+	return switchErr
+}
+
+func pickFallbackModel(excludeID string) (whispermodel.Model, error) {
+	// Prefer any installed model that isn't the one being excluded.
+	for _, m := range whispermodel.All() {
+		if m.ID == excludeID {
+			continue
+		}
+		if whispermodel.IsInstalled(m) {
+			return m, nil
+		}
+	}
+	// No installed fallback found — return an error rather than silently
+	// triggering a download for a non-installed model.
+	return whispermodel.Model{}, fmt.Errorf("no installed fallback model (excluding %s)", excludeID)
 }
 
 func whisperLogPath() string {
@@ -421,62 +502,97 @@ func modelChangeWatcher(ctx context.Context, logger *slog.Logger, client *transc
 		case <-ctx.Done():
 			return
 		case modelID := <-ui.OnModelChange():
+			modelMu.Lock()
 			model, ok := whispermodel.ByID(modelID)
 			if !ok {
 				logger.Warn("unknown model selected", "id", modelID)
+				modelMu.Unlock()
 				continue
 			}
 
 			ui.SetModelMenuEnabled(false)
 			ui.SetStatusLine(fmt.Sprintf("Status: Preparing model %s…", model.ID))
 
-			if !whispermodel.IsInstalled(model) {
-				err := whispermodel.Download(ctx, model, func(downloaded, total int64) {
-					if total > 0 {
-						pct := (downloaded * 100) / total
-						ui.SetStatusLine(fmt.Sprintf("Status: Downloading %s (%d%%)…", model.ID, pct))
-						return
-					}
-					ui.SetStatusLine(fmt.Sprintf("Status: Downloading %s…", model.ID))
-				})
-				if err != nil {
-					logger.Warn("download model", "id", model.ID, "error", err)
-					ui.SetStatusLine("Status: Idle")
-					ui.SetModelMenuEnabled(true)
-					continue
-				}
-			}
-
-			path, err := whispermodel.Path(model)
-			if err != nil {
-				logger.Warn("resolve model path", "id", model.ID, "error", err)
+			if err := activateWhisperModel(ctx, client, whisperSrv, model); err != nil {
+				logger.Warn("switch whisper model", "id", model.ID, "error", err)
 				ui.SetStatusLine("Status: Idle")
 				ui.SetModelMenuEnabled(true)
+				refreshModelMenus()
+				modelMu.Unlock()
 				continue
 			}
 
-			ui.SetStatusLine(fmt.Sprintf("Status: Switching to %s…", model.ID))
-			processMu.Lock()
-			switchErr := whisperSrv.Switch(ctx, path)
-			if switchErr == nil {
-				client.ResetEndpoint()
-			}
-			processMu.Unlock()
-			if switchErr != nil {
-				logger.Warn("switch whisper model", "id", model.ID, "error", switchErr)
-				ui.SetStatusLine("Status: Idle")
-				ui.SetModelMenuEnabled(true)
-				continue
-			}
-
-			ui.SetModelCheckmark(model.ID)
-			ui.SetModelPresets(buildModelPresets(), model.ID)
+			currentWhisperModelID.Store(model.ID)
+			refreshModelMenus()
 			ui.SetStatusLine("Status: Idle")
 			ui.SetModelMenuEnabled(true)
 			if err := config.SavePref(func(p *config.Prefs) { p.Model = model.ID }); err != nil {
 				logger.Warn("save prefs", "field", "model", "error", err)
 			}
 			fmt.Printf("Model changed to %s\n", model.Label)
+			modelMu.Unlock()
+		}
+	}
+}
+
+func modelDeleteWatcher(ctx context.Context, logger *slog.Logger, whisperClient *transcribe.Client, whisperSrv *whisperserver.Server) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case modelID := <-ui.OnModelDelete():
+			modelMu.Lock()
+			model, ok := whispermodel.ByID(modelID)
+			if !ok || !whispermodel.IsInstalled(model) {
+				modelMu.Unlock()
+				continue
+			}
+			if whispermodel.InstalledCount() <= 1 {
+				logger.Info("refusing remove: last downloaded model", "id", modelID)
+				ui.SetStatusLine("Status: Idle")
+				fmt.Printf("Can't remove your only downloaded model.\n")
+				modelMu.Unlock()
+				continue
+			}
+
+			ui.SetModelMenuEnabled(false)
+			ui.SetStatusLine(fmt.Sprintf("Status: Removing %s…", model.ID))
+
+			active, _ := currentWhisperModelID.Load().(string)
+			if modelID == active {
+				fallback, err := pickFallbackModel(modelID)
+				if err != nil {
+					logger.Warn("delete active model: no fallback", "id", modelID, "error", err)
+					ui.SetStatusLine("Status: Idle")
+					ui.SetModelMenuEnabled(true)
+					modelMu.Unlock()
+					continue
+				}
+				if err := activateWhisperModel(ctx, whisperClient, whisperSrv, fallback); err != nil {
+					logger.Warn("switch before model delete", "id", modelID, "fallback", fallback.ID, "error", err)
+					ui.SetStatusLine("Status: Idle")
+					ui.SetModelMenuEnabled(true)
+					refreshModelMenus()
+					modelMu.Unlock()
+					continue
+				}
+				currentWhisperModelID.Store(fallback.ID)
+				if err := config.SavePref(func(p *config.Prefs) { p.Model = fallback.ID }); err != nil {
+					logger.Warn("save prefs", "field", "model", "error", err)
+				}
+			}
+
+			if err := whispermodel.Remove(model); err != nil {
+				logger.Warn("remove model file", "id", model.ID, "error", err)
+				ui.SetStatusLine("Status: Remove failed")
+			} else {
+				fmt.Printf("Removed downloaded model: %s\n", model.Label)
+			}
+
+			refreshModelMenus()
+			ui.SetStatusLine("Status: Idle")
+			ui.SetModelMenuEnabled(true)
+			modelMu.Unlock()
 		}
 	}
 }

@@ -23,6 +23,41 @@ func TestByID(t *testing.T) {
 	}
 }
 
+func TestInstalledCount(t *testing.T) {
+	t.Setenv("WHISPER_MODEL_DIR", t.TempDir())
+	if got := InstalledCount(); got != 0 {
+		t.Fatalf("InstalledCount with empty dir = %d, want 0", got)
+	}
+	tiny, ok := ByID("tiny.en")
+	if !ok {
+		t.Fatal("ByID tiny.en")
+	}
+	pathTiny, err := Path(tiny)
+	if err != nil {
+		t.Fatalf("Path: %v", err)
+	}
+	if err := os.WriteFile(pathTiny, []byte("x"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if got := InstalledCount(); got != 1 {
+		t.Fatalf("InstalledCount one catalog model = %d, want 1", got)
+	}
+	base, ok := ByID("base.en")
+	if !ok {
+		t.Fatal("ByID base.en")
+	}
+	pathBase, err := Path(base)
+	if err != nil {
+		t.Fatalf("Path base: %v", err)
+	}
+	if err := os.WriteFile(pathBase, []byte("y"), 0o600); err != nil {
+		t.Fatalf("WriteFile base: %v", err)
+	}
+	if got := InstalledCount(); got != 2 {
+		t.Fatalf("InstalledCount two catalog models = %d, want 2", got)
+	}
+}
+
 func TestPathAndIsInstalled(t *testing.T) {
 	t.Setenv("WHISPER_MODEL_DIR", t.TempDir())
 	m := Model{Filename: "ggml-foo.bin"}
@@ -38,6 +73,34 @@ func TestPathAndIsInstalled(t *testing.T) {
 	}
 	if !IsInstalled(m) {
 		t.Fatal("IsInstalled false after file write")
+	}
+}
+
+func TestRemove(t *testing.T) {
+	t.Setenv("WHISPER_MODEL_DIR", t.TempDir())
+	m := Model{Filename: "ggml-foo.bin"}
+	path, err := Path(m)
+	if err != nil {
+		t.Fatalf("Path: %v", err)
+	}
+	part := path + ".part"
+	if err := os.WriteFile(path, []byte("installed"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if err := os.WriteFile(part, []byte("partial"), 0o600); err != nil {
+		t.Fatalf("WriteFile partial: %v", err)
+	}
+	if err := Remove(m); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("expected model file gone after Remove")
+	}
+	if _, err := os.Stat(part); !os.IsNotExist(err) {
+		t.Fatal("expected .part file gone after Remove")
+	}
+	if err := Remove(m); err != nil {
+		t.Fatalf("Remove idempotent: %v", err)
 	}
 }
 

@@ -14,6 +14,8 @@ static NSMenu        *hotkeyPresetsMenu = nil;
 static NSMenuItem    *hotkeyPresetsItem = nil;
 static NSMenu        *modelPresetsMenu  = nil;
 static NSMenuItem    *modelPresetsItem  = nil;
+static NSMenu        *modelRemoveMenu   = nil;
+static NSMenuItem    *modelRemoveParentItem = nil;
 static NSMenuItem    *pauseItem         = nil;
 static NSMenuItem    *modeHoldItem      = nil;
 static NSMenuItem    *modeToggleItem    = nil;
@@ -45,6 +47,7 @@ static BOOL isPaused = NO;
 - (void)promptModeClicked:(id)sender;
 - (void)voiceCommandsClicked:(id)sender;
 - (void)contextAwareClicked:(id)sender;
+- (void)modelRemoveClicked:(id)sender;
 @end
 
 @implementation VoxAppDelegate
@@ -100,6 +103,25 @@ static BOOL isPaused = NO;
 }
 - (void)contextAwareClicked:(id)sender {
     onContextAwareToggled(contextAwareItem.state == NSControlStateValueOn ? 0 : 1);
+}
+// Confirmed removal after NSAlert — representedObject is the model ID.
+- (void)modelRemoveClicked:(id)sender {
+    NSMenuItem *item = (NSMenuItem *)sender;
+    NSString *modelID = (NSString *)item.representedObject;
+    if (modelID == nil) return;
+
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Remove downloaded model?";
+    alert.informativeText = [NSString stringWithFormat:@"Delete \u201c%@\u201d from disk to free space. You can download it again later from this menu.", item.title];
+    [alert addButtonWithTitle:@"Remove"];
+    [alert addButtonWithTitle:@"Cancel"];
+    alert.alertStyle = NSAlertStyleWarning;
+
+    if ([alert runModal] != NSAlertFirstButtonReturn) {
+        return;
+    }
+    const char *c = [modelID UTF8String];
+    onModelDeleteChosen((char *)c);
 }
 @end
 
@@ -339,6 +361,21 @@ void uiSetLastText(const char *text) {
 // into a set of trimmed components. Used so multi-hotkey configurations
 // light up *every* matching preset, not just nothing (which is what an
 // exact-string match against "fn,cmd+shift" would give us).
+// Separator + “Manage Downloaded Models” footer for the Whisper Model submenu.
+// Preserved across uiSetModelPresets rebuilds (that call removes only the
+// dynamic model rows, then re-adds this block).
+static void appendWhisperModelMenuFooter(void) {
+    [modelPresetsMenu addItem:[NSMenuItem separatorItem]];
+    if (modelRemoveParentItem == nil) {
+        modelRemoveParentItem = [[NSMenuItem alloc] initWithTitle:@"Manage Downloaded Models"
+                                                           action:nil
+                                                    keyEquivalent:@""];
+        modelRemoveMenu = [[NSMenu alloc] initWithTitle:@"Manage Downloaded Models"];
+        [modelRemoveParentItem setSubmenu:modelRemoveMenu];
+    }
+    [modelPresetsMenu addItem:modelRemoveParentItem];
+}
+
 static NSSet<NSString *> *specSetFromCSV(NSString *csv) {
     if (csv.length == 0) return [NSSet set];
     NSArray<NSString *> *parts = [csv componentsSeparatedByString:@","];
@@ -423,6 +460,56 @@ void uiSetModelPresets(const char **ids, const char **labels, const int *install
                 [item setState:NSControlStateValueOn];
             }
             [modelPresetsMenu addItem:item];
+        }
+        appendWhisperModelMenuFooter();
+    });
+}
+
+void uiSetModelRemovePresets(const char **ids, const char **labels, const int *removable, int count) {
+    NSMutableArray<NSString *> *idArr = [NSMutableArray arrayWithCapacity:count];
+    NSMutableArray<NSString *> *labelArr = [NSMutableArray arrayWithCapacity:count];
+    NSMutableArray<NSNumber *> *removableArr = [NSMutableArray arrayWithCapacity:count];
+    for (int i = 0; i < count; i++) {
+        [idArr addObject:[NSString stringWithUTF8String:ids[i]]];
+        [labelArr addObject:[NSString stringWithUTF8String:labels[i]]];
+        [removableArr addObject:[NSNumber numberWithInt:(removable ? removable[i] : 1)]];
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (modelRemoveMenu == nil) {
+            return;
+        }
+        [modelRemoveMenu removeAllItems];
+
+        NSMenuItem *sectionHeader = [[NSMenuItem alloc] initWithTitle:@"Remove Model"
+                                                               action:nil
+                                                        keyEquivalent:@""];
+        [sectionHeader setEnabled:NO];
+        [modelRemoveMenu addItem:sectionHeader];
+
+        if (idArr.count == 0) {
+            NSMenuItem *none = [[NSMenuItem alloc] initWithTitle:@"No downloaded models"
+                                                            action:nil
+                                                     keyEquivalent:@""];
+            [none setEnabled:NO];
+            [none setIndentationLevel:1];
+            [modelRemoveMenu addItem:none];
+            [modelRemoveParentItem setEnabled:YES];
+            return;
+        }
+        [modelRemoveParentItem setEnabled:YES];
+        for (NSUInteger i = 0; i < idArr.count; i++) {
+            NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:labelArr[i]
+                                                          action:@selector(modelRemoveClicked:)
+                                                   keyEquivalent:@""];
+            [item setTarget:appDelegate];
+            [item setRepresentedObject:idArr[i]];
+            [item setIndentationLevel:1];
+            BOOL canRemove = [removableArr[i] boolValue];
+            if (!canRemove) {
+                [item setEnabled:NO];
+                [item setAction:nil];
+            }
+            [modelRemoveMenu addItem:item];
         }
     });
 }
