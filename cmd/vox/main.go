@@ -21,6 +21,7 @@ import (
 	"vox/internal/audio"
 	"vox/internal/classify"
 	"vox/internal/claude"
+	"vox/internal/commandconfig"
 	"vox/internal/commands"
 	"vox/internal/config"
 	"vox/internal/flags"
@@ -125,6 +126,15 @@ func run() {
 	} else {
 		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	}
+
+	// Ensure only one instance of vox is running.
+	lockFile, err := acquireLock()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error: vox is already running.")
+		fmt.Fprintln(os.Stderr, "  Kill the other instance first, or run: make stop")
+		os.Exit(1)
+	}
+	defer lockFile.Close()
 
 	// Load user config file (~/.vox/config.yaml).
 	userCfg, err := userconfig.Load()
@@ -238,8 +248,20 @@ func run() {
 		promptExec = prompt.NewExecutor(claudeClient, inject.ReadClipboard)
 	}
 
-	// Initialize voice command registry.
-	cmdRegistry := commands.NewRegistry(commands.DefaultCommands()...)
+	// Load user-defined voice commands (warn on error, don't fatal).
+	userDefs, loadErr := commandconfig.Load(commandconfig.DefaultPath())
+	if loadErr != nil {
+		slog.Warn("loading custom commands", "error", loadErr)
+	}
+
+	// Merge user commands with built-in defaults.
+	mergedCmds, mergedPrefixes := commandconfig.Merge(
+		commands.DefaultCommands(),
+		userDefs,
+	)
+
+	cmdRegistry := commands.NewRegistry(mergedCmds...)
+	classifier := classify.NewClassifier(mergedPrefixes)
 
 	// Build hotkey labels for display.
 	hotkeyLabel := triggerLabel(cfg.Triggers)
@@ -307,7 +329,7 @@ func run() {
 	pipe := pipeline.New(
 		transcribeStage(whisperClient, transcribeOpts),
 		filterBlankStage(),
-		classifyStage(),
+		classifyStage(classifier),
 		postProcessStage(claudeClient),
 		promptModeStage(promptExec),
 		commandStage(cmdRegistry),
@@ -940,13 +962,13 @@ func injectStage() pipeline.Stage {
 }
 
 // classifyStage determines if speech is dictation, a prompt, or a command.
-func classifyStage() pipeline.Stage {
+func classifyStage(cl *classify.Classifier) pipeline.Stage {
 	return func(_ context.Context, r *pipeline.Result) error {
 		// Only classify if prompt mode or voice commands are enabled.
 		if !settings.PromptMode.Load() && !settings.VoiceCommands.Load() {
 			return nil
 		}
-		intent := classify.Classify(r.RawText)
+		intent := cl.Classify(r.RawText)
 		switch intent.Mode {
 		case classify.ModePrompt:
 			if settings.PromptMode.Load() {
@@ -1027,9 +1049,14 @@ func commandStage(reg *commands.Registry) pipeline.Stage {
 		fmt.Printf("[command: %s] ", action)
 		result, err := reg.Execute(ctx, action, args)
 		if err != nil {
+			r.OutputText = fmt.Sprintf("%s: failed", action)
 			return fmt.Errorf("voice command (%s): %w", action, err)
 		}
-		r.OutputText = result
+		if result == "" {
+			r.OutputText = fmt.Sprintf("%s: OK", action)
+		} else {
+			r.OutputText = fmt.Sprintf("%s: %s", action, result)
+		}
 		return nil
 	}
 }
@@ -1047,6 +1074,36 @@ func isBlankAudio(text string) bool {
 	t := strings.ToLower(strings.TrimSpace(text))
 	t = strings.Trim(t, "[]() ")
 	return t == "blank audio" || t == "blank_audio"
+}
+
+// acquireLock attempts to acquire an exclusive lock on ~/.vox/vox.lock.
+// Returns the open file (caller must defer Close) or an error if another
+// instance holds the lock. The lock is released automatically when the
+// process exits, even on crash or SIGKILL.
+func acquireLock() (*os.File, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	lockPath := filepath.Join(home, ".vox", "vox.lock")
+
+	// Ensure ~/.vox/ exists.
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0700); err != nil {
+		return nil, err
+	}
+
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, err
+	}
+
+	// Try non-blocking exclusive lock.
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		f.Close()
+		return nil, err
+	}
+
+	return f, nil
 }
 
 func cleanup(logger *slog.Logger, recorder *audio.Recorder) {

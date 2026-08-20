@@ -1,0 +1,58 @@
+# Vox Custom Voice Commands
+#
+# Place this file at ~/.vox/commands.yaml to define custom voice commands
+# or override built-in ones.
+#
+# Copy this file to get started:
+#   cp commands.yaml.example ~/.vox/commands.yaml
+#
+# Schema:
+#   name:             Unique command ID. Use a built-in name to override it.
+#   triggers:         Voice trigger phrases (at least one required).
+#                     Trailing space = captures remaining text as args.
+#                     No trailing space = exact match with word-boundary check.
+#   command:          Binary to execute (e.g., git, make, go).
+#   args:             Base arguments (optional).
+#   forward_args:     Append spoken args after base args (default: false).
+#   require_dot_slash: Validate args start with ./ and reject .. (default: false).
+#   usage:            Message shown when forward_args is true but no args spoken.
+#
+# Built-in commands (override by using the same name):
+#   create-pr, list-issues, query-flag, create-ticket,
+#   git-commit-all, git-commit, git-status, git-diff,
+#   git-push, git-pull, run-tests, open-url
+#
+# Note: Trigger phrases are case-insensitive (lowercased before matching).
+# Prompt prefixes (summarize, explain, rewrite, translate, fix grammar,
+# proofread) always take priority over command triggers — avoid using
+# those words at the start of your triggers.
+
+commands:
+  # Example: deploy to staging
+  # - name: deploy-staging
+  #   triggers:
+  #     - "deploy to staging"
+  #     - "deploy staging"
+  #   command: make
+  #   args: ["deploy-staging"]
+
+  # Example: override built-in git-push with custom remote
+  # - name: git-push
+  #   triggers:
+  #     - "git push"
+  #     - "push to remote"
+  #     - "push my changes"
+  #   command: git
+  #   args: ["push", "upstream"]
+  #   forward_args: true
+
+  # Example: run linter with path validation
+  # - name: run-lint
+  #   triggers:
+  #     - "run lint "
+  #     - "lint "
+  #   command: golangci-lint
+  #   args: ["run"]
+  #   forward_args: true
+  #   require_dot_slash: true
+  #   usage: "say 'run lint ./path/to/package'"

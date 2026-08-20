@@ -45,6 +45,10 @@ setup:
 		echo "Error: Homebrew is required: https://brew.sh"; \
 		exit 1; \
 	fi; \
+	if ! command -v go >/dev/null 2>&1; then \
+		echo "📦 Installing go..."; \
+		brew install go; \
+	fi; \
 	if ! command -v rec >/dev/null 2>&1 && ! command -v ffmpeg >/dev/null 2>&1; then \
 		echo "📦 Installing sox..."; \
 		brew install sox; \

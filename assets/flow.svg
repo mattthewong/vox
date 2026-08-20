@@ -1,0 +1,338 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 580" font-family="'SF Mono','Fira Code','Cascadia Code',monospace">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0d0f1a"/>
+      <stop offset="100%" stop-color="#141828"/>
+    </linearGradient>
+    <linearGradient id="vox-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="card-shadow" x="-5%" y="-5%" width="110%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#a855f7"/>
+    </marker>
+    <marker id="arrow-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#4a5568"/>
+    </marker>
+    <!-- arrow-down reuses the right-pointing shape with orient="auto"
+         so it rotates correctly for vertical (downward) lines -->
+    <marker id="arrow-down" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#4a5568"/>
+    </marker>
+    <style>
+      @keyframes flow { to { stroke-dashoffset: -24; } }
+      .flow-line { stroke-dasharray: 8 4; animation: flow 1s linear infinite; }
+      @keyframes pulse { 0%,100%{opacity:0.6} 50%{opacity:1} }
+      .pulse { animation: pulse 2s ease-in-out infinite; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="580" rx="16" fill="url(#bg)"/>
+  <text x="600" y="38" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="600" letter-spacing="3" opacity="0.6">VOX PIPELINE</text>
+
+  <!-- ════════════════════════════════════════════════════════ -->
+  <!-- COLUMN 1: HOTKEY INPUT                                  -->
+  <!-- ════════════════════════════════════════════════════════ -->
+  <g transform="translate(40, 70)">
+    <rect width="150" height="220" rx="12" fill="#1a1e2e" stroke="#2d3348" stroke-width="1" filter="url(#card-shadow)"/>
+    <text x="75" y="28" text-anchor="middle" fill="#94a3b8" font-size="10" font-weight="600" letter-spacing="2">INPUT</text>
+    <line x1="16" y1="38" x2="134" y2="38" stroke="#2d3348" stroke-width="1"/>
+
+    <g transform="translate(25, 52)">
+      <rect width="100" height="32" rx="6" fill="#1e293b" stroke="#a855f7" stroke-width="1.5"/>
+      <text x="50" y="21" text-anchor="middle" fill="#a855f7" font-size="11" font-weight="700">&#x2325; Space</text>
+    </g>
+
+    <g transform="translate(30, 100)">
+      <rect x="0"  y="12" width="4" height="16" rx="2" fill="#a855f7" opacity="0.6" class="pulse"/>
+      <rect x="8"  y="6"  width="4" height="28" rx="2" fill="#a855f7" opacity="0.8" class="pulse"/>
+      <rect x="16" y="2"  width="4" height="36" rx="2" fill="#a855f7"              class="pulse"/>
+      <rect x="24" y="8"  width="4" height="24" rx="2" fill="#a855f7" opacity="0.7" class="pulse"/>
+      <rect x="32" y="4"  width="4" height="32" rx="2" fill="#a855f7" opacity="0.9" class="pulse"/>
+      <rect x="40" y="10" width="4" height="20" rx="2" fill="#a855f7" opacity="0.6" class="pulse"/>
+      <rect x="48" y="6"  width="4" height="28" rx="2" fill="#a855f7" opacity="0.8" class="pulse"/>
+      <rect x="56" y="12" width="4" height="16" rx="2" fill="#a855f7" opacity="0.5" class="pulse"/>
+      <rect x="64" y="4"  width="4" height="32" rx="2" fill="#6366f1" opacity="0.9" class="pulse"/>
+      <rect x="72" y="8"  width="4" height="24" rx="2" fill="#6366f1" opacity="0.7" class="pulse"/>
+      <rect x="80" y="14" width="4" height="12" rx="2" fill="#6366f1" opacity="0.5" class="pulse"/>
+    </g>
+
+    <g transform="translate(20, 152)">
+      <text x="0" y="0" fill="#64748b" font-size="8">16kHz mono WAV</text>
+      <text x="0" y="14" fill="#64748b" font-size="8">via sox / ffmpeg</text>
+    </g>
+    <g transform="translate(20, 185)">
+      <rect width="36" height="14" rx="3" fill="#a855f7" opacity="0.15"/>
+      <text x="18" y="10" text-anchor="middle" fill="#a855f7" font-size="7" font-weight="600">sox</text>
+      <rect x="42" width="48" height="14" rx="3" fill="#6366f1" opacity="0.15"/>
+      <text x="66" y="10" text-anchor="middle" fill="#6366f1" font-size="7" font-weight="600">ffmpeg</text>
+    </g>
+  </g>
+
+  <!-- Arrow: Input -> VOX -->
+  <line x1="198" y1="180" x2="250" y2="180" stroke="#a855f7" stroke-width="2" marker-end="url(#arrow)" class="flow-line"/>
+
+  <!-- ════════════════════════════════════════════════════════ -->
+  <!-- COLUMN 2: VOX CORE                                      -->
+  <!-- ════════════════════════════════════════════════════════ -->
+  <g transform="translate(260, 50)">
+    <rect width="620" height="470" rx="16" fill="none" stroke="url(#vox-grad)" stroke-width="2" filter="url(#glow)" opacity="0.4"/>
+    <rect width="620" height="470" rx="16" fill="#121522" fill-opacity="0.4"/>
+    <text x="310" y="32" text-anchor="middle" fill="url(#vox-grad)" font-size="16" font-weight="700" letter-spacing="4">VOX</text>
+
+    <!-- ── Stage 1: TRANSCRIBE ── -->
+    <g transform="translate(16, 48)">
+      <rect width="286" height="88" rx="10" fill="#1a1e2e" stroke="#a855f7" stroke-width="1" opacity="0.9"/>
+      <circle cx="26" cy="18" r="10" fill="#a855f7" opacity="0.15"/>
+      <text x="26" y="22" text-anchor="middle" fill="#a855f7" font-size="12" font-weight="700">1</text>
+      <text x="48" y="22" fill="#a855f7" font-size="11" font-weight="700">TRANSCRIBE</text>
+      <text x="26" y="42" fill="#94a3b8" font-size="9">send WAV to whisper-server</text>
+      <text x="26" y="54" fill="#94a3b8" font-size="9">auto-detect endpoint format</text>
+      <text x="26" y="66" fill="#94a3b8" font-size="9">apply vocab hints</text>
+      <text x="26" y="78" fill="#94a3b8" font-size="9">extract raw text</text>
+      <g transform="translate(195, 56)">
+        <rect width="78" height="16" rx="3" fill="#a855f7" opacity="0.12"/>
+        <text x="39" y="12" text-anchor="middle" fill="#a855f7" font-size="8" font-weight="600">whisper.cpp</text>
+      </g>
+    </g>
+
+    <!-- Arrow 1->2 -->
+    <line x1="304" y1="92" x2="316" y2="92" stroke="#4a5568" stroke-width="1.5" marker-end="url(#arrow-dim)"/>
+
+    <!-- ── Stage 2: FILTER ── -->
+    <g transform="translate(318, 48)">
+      <rect width="286" height="88" rx="10" fill="#1a1e2e" stroke="#7c3aed" stroke-width="1" opacity="0.9"/>
+      <circle cx="26" cy="18" r="10" fill="#7c3aed" opacity="0.15"/>
+      <text x="26" y="22" text-anchor="middle" fill="#c084fc" font-size="12" font-weight="700">2</text>
+      <text x="48" y="22" fill="#c084fc" font-size="11" font-weight="700">FILTER</text>
+      <text x="26" y="42" fill="#94a3b8" font-size="9">detect blank audio</text>
+      <text x="26" y="54" fill="#94a3b8" font-size="9">catch hallucinations</text>
+      <text x="26" y="66" fill="#94a3b8" font-size="9">reject silence</text>
+      <text x="26" y="78" fill="#94a3b8" font-size="9">cancel if empty</text>
+      <g transform="translate(166, 56)">
+        <rect width="104" height="16" rx="3" fill="#ef4444" opacity="0.12"/>
+        <text x="52" y="12" text-anchor="middle" fill="#ef4444" font-size="8" font-weight="600">[BLANK_AUDIO]</text>
+      </g>
+    </g>
+
+    <!-- Down arrow from row 1 to Classify -->
+    <line x1="310" y1="138" x2="310" y2="148" stroke="#4a5568" stroke-width="1.5" marker-end="url(#arrow-down)"/>
+
+    <!-- ── Stage 3: CLASSIFY ── -->
+    <g transform="translate(16, 150)">
+      <rect width="588" height="88" rx="10" fill="#1a1e2e" stroke="#6366f1" stroke-width="1" opacity="0.9"/>
+      <circle cx="26" cy="18" r="10" fill="#6366f1" opacity="0.15"/>
+      <text x="26" y="22" text-anchor="middle" fill="#818cf8" font-size="12" font-weight="700">3</text>
+      <text x="48" y="22" fill="#818cf8" font-size="11" font-weight="700">CLASSIFY</text>
+      <text x="26" y="42" fill="#94a3b8" font-size="9">fast prefix matching (no API)</text>
+      <text x="26" y="54" fill="#94a3b8" font-size="9">extract action, subject, args</text>
+      <text x="26" y="66" fill="#94a3b8" font-size="9">detect app context</text>
+      <text x="26" y="78" fill="#94a3b8" font-size="9">route to mode handler</text>
+      <g transform="translate(250, 14)">
+        <rect width="70" height="18" rx="4" fill="#22c55e" opacity="0.15"/>
+        <text x="35" y="13" text-anchor="middle" fill="#22c55e" font-size="9" font-weight="700">DICTATION</text>
+      </g>
+      <g transform="translate(328, 14)">
+        <rect width="60" height="18" rx="4" fill="#3b82f6" opacity="0.2"/>
+        <text x="30" y="13" text-anchor="middle" fill="#60a5fa" font-size="9" font-weight="700">PROMPT</text>
+      </g>
+      <g transform="translate(396, 14)">
+        <rect width="70" height="18" rx="4" fill="#f59e0b" opacity="0.15"/>
+        <text x="35" y="13" text-anchor="middle" fill="#f59e0b" font-size="9" font-weight="700">COMMAND</text>
+      </g>
+      <g transform="translate(250, 42)">
+        <text x="0" y="0" fill="#64748b" font-size="8">"summarize my clipboard"</text>
+        <text x="0" y="14" fill="#64748b" font-size="8">"create PR" "git status"</text>
+        <text x="0" y="28" fill="#64748b" font-size="8">"translate to Spanish"</text>
+      </g>
+      <g transform="translate(430, 42)">
+        <rect width="44" height="14" rx="3" fill="#1e293b" stroke="#4a5568" stroke-width="0.5"/>
+        <text x="22" y="10" text-anchor="middle" fill="#e2e8f0" font-size="7">IDE</text>
+        <rect x="50" width="52" height="14" rx="3" fill="#1e293b" stroke="#4a5568" stroke-width="0.5"/>
+        <text x="76" y="10" text-anchor="middle" fill="#e2e8f0" font-size="7">Terminal</text>
+        <rect x="0" y="18" width="44" height="14" rx="3" fill="#1e293b" stroke="#4a5568" stroke-width="0.5"/>
+        <text x="22" y="28" text-anchor="middle" fill="#e2e8f0" font-size="7">Chat</text>
+        <rect x="50" y="18" width="52" height="14" rx="3" fill="#1e293b" stroke="#4a5568" stroke-width="0.5"/>
+        <text x="76" y="28" text-anchor="middle" fill="#e2e8f0" font-size="7">Browser</text>
+      </g>
+    </g>
+
+    <!-- ── Fan-out: vertical drops from Classify to 3 mode stages ── -->
+    <line x1="110" y1="240" x2="110" y2="258" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrow-down)"/>
+    <line x1="310" y1="240" x2="310" y2="258" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow-down)"/>
+    <line x1="510" y1="240" x2="510" y2="258" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#arrow-down)"/>
+
+    <!-- ── Stage 4: POST-PROCESS ── -->
+    <g transform="translate(16, 260)">
+      <rect width="186" height="100" rx="10" fill="#1a1e2e" stroke="#22c55e" stroke-width="1" opacity="0.9"/>
+      <circle cx="22" cy="16" r="8" fill="#22c55e" opacity="0.15"/>
+      <text x="22" y="20" text-anchor="middle" fill="#22c55e" font-size="10" font-weight="700">4</text>
+      <text x="40" y="20" fill="#22c55e" font-size="10" font-weight="700">POST-PROCESS</text>
+      <text x="18" y="38" fill="#94a3b8" font-size="8">AI grammar cleanup</text>
+      <text x="18" y="50" fill="#94a3b8" font-size="8">punctuation + caps</text>
+      <text x="18" y="62" fill="#94a3b8" font-size="8">context-aware hints</text>
+      <text x="18" y="74" fill="#94a3b8" font-size="8">app-specific format</text>
+      <g transform="translate(112, 82)">
+        <rect width="62" height="14" rx="3" fill="#22c55e" opacity="0.12"/>
+        <text x="31" y="10" text-anchor="middle" fill="#22c55e" font-size="7" font-weight="600">Claude AI</text>
+      </g>
+    </g>
+
+    <!-- ── Stage 5: PROMPT ── -->
+    <g transform="translate(218, 260)">
+      <rect width="186" height="100" rx="10" fill="#1a1e2e" stroke="#3b82f6" stroke-width="1" opacity="0.9"/>
+      <circle cx="22" cy="16" r="8" fill="#3b82f6" opacity="0.15"/>
+      <text x="22" y="20" text-anchor="middle" fill="#60a5fa" font-size="10" font-weight="700">5</text>
+      <text x="40" y="20" fill="#60a5fa" font-size="10" font-weight="700">PROMPT</text>
+      <text x="18" y="38" fill="#94a3b8" font-size="8">summarize clipboard</text>
+      <text x="18" y="50" fill="#94a3b8" font-size="8">explain / rewrite</text>
+      <text x="18" y="62" fill="#94a3b8" font-size="8">translate to language</text>
+      <text x="18" y="74" fill="#94a3b8" font-size="8">fix grammar / proofread</text>
+      <g transform="translate(112, 82)">
+        <rect width="62" height="14" rx="3" fill="#3b82f6" opacity="0.15"/>
+        <text x="31" y="10" text-anchor="middle" fill="#60a5fa" font-size="7" font-weight="600">Claude AI</text>
+      </g>
+    </g>
+
+    <!-- ── Stage 6: COMMAND ── -->
+    <g transform="translate(420, 260)">
+      <rect width="186" height="100" rx="10" fill="#1a1e2e" stroke="#f59e0b" stroke-width="1" opacity="0.9"/>
+      <circle cx="22" cy="16" r="8" fill="#f59e0b" opacity="0.15"/>
+      <text x="22" y="20" text-anchor="middle" fill="#f59e0b" font-size="10" font-weight="700">6</text>
+      <text x="40" y="20" fill="#f59e0b" font-size="10" font-weight="700">COMMAND</text>
+      <text x="18" y="38" fill="#94a3b8" font-size="8">gh pr create</text>
+      <text x="18" y="50" fill="#94a3b8" font-size="8">git commit / push</text>
+      <text x="18" y="62" fill="#94a3b8" font-size="8">ldcli flags get</text>
+      <text x="18" y="74" fill="#94a3b8" font-size="8">go test / open url</text>
+      <g transform="translate(112, 82)">
+        <rect width="62" height="14" rx="3" fill="#f59e0b" opacity="0.12"/>
+        <text x="31" y="10" text-anchor="middle" fill="#f59e0b" font-size="7" font-weight="600">Shell</text>
+      </g>
+    </g>
+
+    <!-- ══ Fan-in: orthogonal 90° paths from each stage to Inject ══ -->
+    <!-- Stage 4 (x=110): down then right along bus to center -->
+    <path d="M 110,362 V 378 H 300" stroke="#22c55e" stroke-width="1.5" stroke-opacity="0.5" fill="none" marker-end="url(#arrow-dim)"/>
+    <!-- Stage 5 (x=310): straight down to Inject -->
+    <line x1="310" y1="362" x2="310" y2="388" stroke="#3b82f6" stroke-width="1.5" stroke-opacity="0.5" marker-end="url(#arrow-down)"/>
+    <!-- Stage 6 (x=510): down then left along bus to center -->
+    <path d="M 510,362 V 378 H 320" stroke="#f59e0b" stroke-width="1.5" stroke-opacity="0.5" fill="none" marker-end="url(#arrow-dim)"/>
+
+    <!-- Horizontal bus bar connecting the three returns -->
+    <line x1="110" y1="378" x2="510" y2="378" stroke="#4a5568" stroke-width="1" stroke-opacity="0.2"/>
+
+    <!-- ── Stage 7: INJECT ── -->
+    <g transform="translate(130, 390)">
+      <rect width="360" height="64" rx="10" fill="#1a1e2e" stroke="#ec4899" stroke-width="1" opacity="0.9"/>
+      <circle cx="26" cy="18" r="10" fill="#ec4899" opacity="0.15"/>
+      <text x="26" y="22" text-anchor="middle" fill="#ec4899" font-size="12" font-weight="700">7</text>
+      <text x="48" y="22" fill="#ec4899" font-size="11" font-weight="700">INJECT</text>
+      <text x="26" y="42" fill="#94a3b8" font-size="9">snapshot clipboard &#x2192; pbcopy &#x2192; &#x2318;V &#x2192; restore</text>
+      <text x="26" y="54" fill="#94a3b8" font-size="9">CGEvent keyboard simulation into focused app</text>
+      <g transform="translate(240, 14)">
+        <rect width="48" height="16" rx="3" fill="#ec4899" opacity="0.12"/>
+        <text x="24" y="12" text-anchor="middle" fill="#ec4899" font-size="8" font-weight="600">paste</text>
+      </g>
+      <g transform="translate(294, 14)">
+        <rect width="52" height="16" rx="3" fill="#ec4899" opacity="0.12"/>
+        <text x="26" y="12" text-anchor="middle" fill="#ec4899" font-size="8" font-weight="600">clipboard</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Arrow: VOX -> Output -->
+  <line x1="888" y1="180" x2="938" y2="180" stroke="#a855f7" stroke-width="2" marker-end="url(#arrow)" class="flow-line"/>
+
+  <!-- ════════════════════════════════════════════════════════ -->
+  <!-- COLUMN 3: OUTPUT                                        -->
+  <!-- ════════════════════════════════════════════════════════ -->
+  <g transform="translate(948, 70)">
+    <rect width="210" height="200" rx="12" fill="#1a1e2e" stroke="#2d3348" stroke-width="1" filter="url(#card-shadow)"/>
+    <text x="105" y="28" text-anchor="middle" fill="#94a3b8" font-size="10" font-weight="600" letter-spacing="2">FOCUSED APP</text>
+    <line x1="16" y1="38" x2="194" y2="38" stroke="#2d3348" stroke-width="1"/>
+
+    <g transform="translate(20, 50)">
+      <rect width="170" height="28" rx="5" fill="#1e293b" stroke="#22c55e" stroke-width="1"/>
+      <text x="14" y="19" fill="#e2e8f0" font-size="10">VS Code</text>
+      <rect x="100" y="6" width="58" height="16" rx="3" fill="#22c55e" opacity="0.12"/>
+      <text x="129" y="18" text-anchor="middle" fill="#22c55e" font-size="7" font-weight="600">structured</text>
+    </g>
+    <g transform="translate(20, 86)">
+      <rect width="170" height="28" rx="5" fill="#1e293b" stroke="#22c55e" stroke-width="1"/>
+      <text x="14" y="19" fill="#e2e8f0" font-size="10">Slack</text>
+      <rect x="100" y="6" width="58" height="16" rx="3" fill="#3b82f6" opacity="0.15"/>
+      <text x="129" y="18" text-anchor="middle" fill="#60a5fa" font-size="7" font-weight="600">casual</text>
+    </g>
+    <g transform="translate(20, 122)">
+      <rect width="170" height="28" rx="5" fill="#1e293b" stroke="#22c55e" stroke-width="1"/>
+      <text x="14" y="19" fill="#e2e8f0" font-size="10">Terminal</text>
+      <rect x="100" y="6" width="58" height="16" rx="3" fill="#f59e0b" opacity="0.12"/>
+      <text x="129" y="18" text-anchor="middle" fill="#f59e0b" font-size="7" font-weight="600">terse</text>
+    </g>
+    <g transform="translate(20, 158)">
+      <rect width="170" height="28" rx="5" fill="#1e293b" stroke="#22c55e" stroke-width="1"/>
+      <text x="14" y="19" fill="#e2e8f0" font-size="10">Browser</text>
+      <rect x="100" y="6" width="58" height="16" rx="3" fill="#a855f7" opacity="0.12"/>
+      <text x="129" y="18" text-anchor="middle" fill="#a855f7" font-size="7" font-weight="600">flowing</text>
+    </g>
+  </g>
+
+  <!-- ════════════════════════════════════════════════════════ -->
+  <!-- RIGHT: FEATURE FLAGS                                    -->
+  <!-- ════════════════════════════════════════════════════════ -->
+  <g transform="translate(948, 290)">
+    <rect width="210" height="200" rx="12" fill="#1a1e2e" stroke="#2d3348" stroke-width="1" filter="url(#card-shadow)"/>
+    <text x="105" y="24" text-anchor="middle" fill="#94a3b8" font-size="10" font-weight="600" letter-spacing="2">FEATURE FLAGS</text>
+    <line x1="16" y1="34" x2="194" y2="34" stroke="#2d3348" stroke-width="1"/>
+
+    <g transform="translate(16, 48)">
+      <circle cx="6" cy="6" r="4" fill="#22c55e"/><text x="18" y="10" fill="#94a3b8" font-size="8">vox-ai-postprocess</text>
+    </g>
+    <g transform="translate(16, 66)">
+      <circle cx="6" cy="6" r="4" fill="#22c55e"/><text x="18" y="10" fill="#94a3b8" font-size="8">vox-prompt-mode</text>
+    </g>
+    <g transform="translate(16, 84)">
+      <circle cx="6" cy="6" r="4" fill="#22c55e"/><text x="18" y="10" fill="#94a3b8" font-size="8">vox-voice-commands</text>
+    </g>
+    <g transform="translate(16, 102)">
+      <circle cx="6" cy="6" r="4" fill="#22c55e"/><text x="18" y="10" fill="#94a3b8" font-size="8">vox-context-aware</text>
+    </g>
+    <g transform="translate(16, 120)">
+      <circle cx="6" cy="6" r="4" fill="#3b82f6"/><text x="18" y="10" fill="#94a3b8" font-size="8">vox-ai-model</text>
+    </g>
+    <g transform="translate(16, 138)">
+      <circle cx="6" cy="6" r="4" fill="#3b82f6"/><text x="18" y="10" fill="#94a3b8" font-size="8">vox-anthropic-key</text>
+    </g>
+    <g transform="translate(16, 156)">
+      <circle cx="6" cy="6" r="4" fill="#f59e0b"/><text x="18" y="10" fill="#94a3b8" font-size="8">vox-streaming-overlay</text>
+    </g>
+    <g transform="translate(130, 168)">
+      <rect width="58" height="16" rx="3" fill="#1e293b" stroke="#4a5568" stroke-width="0.5"/>
+      <text x="29" y="12" text-anchor="middle" fill="#e2e8f0" font-size="7">Go SDK v7</text>
+    </g>
+  </g>
+
+  <!-- ════════════════════════════════════════════════════════ -->
+  <!-- BOTTOM: Stack bar                                       -->
+  <!-- ════════════════════════════════════════════════════════ -->
+  <g transform="translate(40, 538)">
+    <rect width="1120" height="30" rx="6" fill="#1a1e2e" stroke="#2d3348" stroke-width="1"/>
+    <text x="16" y="20" fill="#64748b" font-size="10" font-weight="600">STACK</text>
+    <text x="70"  y="20" fill="#94a3b8" font-size="10">Go 1.24</text>
+    <text x="145" y="20" fill="#94a3b8" font-size="10">Cocoa / cgo</text>
+    <text x="260" y="20" fill="#94a3b8" font-size="10">whisper.cpp</text>
+    <text x="378" y="20" fill="#94a3b8" font-size="10">Claude Haiku</text>
+    <text x="500" y="20" fill="#94a3b8" font-size="10">CGEventTap</text>
+    <text x="620" y="20" fill="#94a3b8" font-size="10">NSStatusItem</text>
+    <text x="750" y="20" fill="#94a3b8" font-size="10">LaunchDarkly</text>
+    <text x="885" y="20" fill="#a855f7" font-size="10" font-weight="600">100% local transcription</text>
+  </g>
+</svg>

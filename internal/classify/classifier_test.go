@@ -2,6 +2,11 @@ package classify
 
 import "testing"
 
+// defaultClassifier returns a Classifier with built-in defaults for testing.
+func defaultClassifier() *Classifier {
+	return NewClassifier(DefaultCommandPrefixes())
+}
+
 func TestClassifyPromptMode(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -28,7 +33,7 @@ func TestClassifyPromptMode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Classify(tt.input)
+			got := defaultClassifier().Classify(tt.input)
 			if got.Mode != tt.wantMode {
 				t.Errorf("Classify(%q).Mode = %v, want %v", tt.input, got.Mode, tt.wantMode)
 			}
@@ -92,7 +97,7 @@ func TestClassifyCommandMode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Classify(tt.input)
+			got := defaultClassifier().Classify(tt.input)
 			if got.Mode != ModeCommand {
 				t.Errorf("Classify(%q).Mode = %v, want command", tt.input, got.Mode)
 			}
@@ -150,7 +155,7 @@ func TestClassifyDictation(t *testing.T) {
 
 	for _, input := range inputs {
 		t.Run(input, func(t *testing.T) {
-			got := Classify(input)
+			got := defaultClassifier().Classify(input)
 			if got.Mode != ModeDictation {
 				t.Errorf("Classify(%q) = %v (action=%q), want dictation", input, got.Mode, got.Action)
 			}
@@ -169,7 +174,7 @@ func TestClassifyCaseInsensitive(t *testing.T) {
 		{"Hey Vox do something", ModeCommand},
 	}
 	for _, tt := range tests {
-		got := Classify(tt.input)
+		got := defaultClassifier().Classify(tt.input)
 		if got.Mode != tt.want {
 			t.Errorf("Classify(%q).Mode = %v, want %v", tt.input, got.Mode, tt.want)
 		}
@@ -177,14 +182,14 @@ func TestClassifyCaseInsensitive(t *testing.T) {
 }
 
 func TestClassifyPreservesOriginalCase(t *testing.T) {
-	got := Classify("Summarize My Important Meeting Notes")
+	got := defaultClassifier().Classify("Summarize My Important Meeting Notes")
 	if got.RawArgs != "My Important Meeting Notes" {
 		t.Errorf("RawArgs = %q, want original case preserved", got.RawArgs)
 	}
 }
 
 func TestClassifyWhitespace(t *testing.T) {
-	got := Classify("  summarize my clipboard  ")
+	got := defaultClassifier().Classify("  summarize my clipboard  ")
 	if got.Mode != ModePrompt {
 		t.Errorf("leading/trailing whitespace should be trimmed; got mode %v", got.Mode)
 	}
@@ -196,6 +201,130 @@ func TestClassifyWhitespace(t *testing.T) {
 	}
 	if got.RawArgs != "" {
 		t.Errorf("RawArgs = %q, want empty (exact prefix match)", got.RawArgs)
+	}
+}
+
+func TestClassifierCustomPrefixes(t *testing.T) {
+	custom := []PrefixEntry{
+		{Prefix: "deploy to staging", Action: "deploy-staging", Subject: ""},
+		{Prefix: "deploy staging", Action: "deploy-staging", Subject: ""},
+		{Prefix: "run lint ", Action: "run-lint", Subject: ""},
+	}
+	cl := NewClassifier(custom)
+
+	tests := []struct {
+		name       string
+		input      string
+		wantMode   Mode
+		wantAction string
+		wantArgs   string
+	}{
+		{"custom exact match", "deploy to staging", ModeCommand, "deploy-staging", ""},
+		{"custom alt trigger", "deploy staging", ModeCommand, "deploy-staging", ""},
+		{"custom with args", "run lint ./src/", ModeCommand, "run-lint", "./src/"},
+		{"custom case insensitive", "Deploy To Staging", ModeCommand, "deploy-staging", ""},
+		{"non-match falls to dictation", "do something else", ModeDictation, "", ""},
+		{"prompt still works", "summarize my clipboard", ModePrompt, "summarize", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := cl.Classify(tt.input)
+			if got.Mode != tt.wantMode {
+				t.Errorf("Classify(%q).Mode = %v, want %v", tt.input, got.Mode, tt.wantMode)
+			}
+			if got.Action != tt.wantAction {
+				t.Errorf("Classify(%q).Action = %q, want %q", tt.input, got.Action, tt.wantAction)
+			}
+			if got.RawArgs != tt.wantArgs {
+				t.Errorf("Classify(%q).RawArgs = %q, want %q", tt.input, got.RawArgs, tt.wantArgs)
+			}
+		})
+	}
+}
+
+func TestClassifierWordBoundaryCustom(t *testing.T) {
+	custom := []PrefixEntry{
+		{Prefix: "deploy", Action: "deploy", Subject: ""},
+	}
+	cl := NewClassifier(custom)
+
+	got := cl.Classify("deploy")
+	if got.Mode != ModeCommand {
+		t.Errorf("exact match 'deploy' should be command, got %v", got.Mode)
+	}
+
+	got = cl.Classify("deploy foo")
+	if got.Mode != ModeCommand {
+		t.Errorf("'deploy foo' should be command, got %v", got.Mode)
+	}
+
+	got = cl.Classify("deployment pipeline")
+	if got.Mode != ModeDictation {
+		t.Errorf("'deployment' should be dictation (word boundary), got %v (action=%q)", got.Mode, got.Action)
+	}
+}
+
+func TestClassifyCommandWithPunctuation(t *testing.T) {
+	cl := defaultClassifier()
+
+	// Whisper commonly appends punctuation -- these should still match commands
+	tests := []struct {
+		name       string
+		input      string
+		wantMode   Mode
+		wantAction string
+	}{
+		{"period", "git status.", ModeCommand, "git-status"},
+		{"exclamation", "git status!", ModeCommand, "git-status"},
+		{"question", "git status?", ModeCommand, "git-status"},
+		{"comma", "git status,", ModeCommand, "git-status"},
+		{"period with space", "run tests.", ModeCommand, "run-tests"},
+		{"no punctuation", "git status", ModeCommand, "git-status"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := cl.Classify(tt.input)
+			if got.Mode != tt.wantMode {
+				t.Errorf("Classify(%q).Mode = %v, want %v", tt.input, got.Mode, tt.wantMode)
+			}
+			if got.Action != tt.wantAction {
+				t.Errorf("Classify(%q).Action = %q, want %q", tt.input, got.Action, tt.wantAction)
+			}
+		})
+	}
+}
+
+func TestClassifyCustomCommandWithPunctuation(t *testing.T) {
+	custom := []PrefixEntry{
+		{Prefix: "open gmail", Action: "open-gmail"},
+		{Prefix: "check email", Action: "open-gmail"},
+	}
+	cl := NewClassifier(custom)
+
+	tests := []struct {
+		input      string
+		wantMode   Mode
+		wantAction string
+	}{
+		{"open gmail", ModeCommand, "open-gmail"},
+		{"open gmail.", ModeCommand, "open-gmail"},
+		{"Open Gmail.", ModeCommand, "open-gmail"},
+		{"check email!", ModeCommand, "open-gmail"},
+		{"open gmailing list", ModeDictation, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := cl.Classify(tt.input)
+			if got.Mode != tt.wantMode {
+				t.Errorf("Classify(%q).Mode = %v, want %v", tt.input, got.Mode, tt.wantMode)
+			}
+			if got.Action != tt.wantAction {
+				t.Errorf("Classify(%q).Action = %q, want %q", tt.input, got.Action, tt.wantAction)
+			}
+		})
 	}
 }
 
