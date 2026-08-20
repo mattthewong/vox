@@ -5,7 +5,38 @@ import (
 	"testing"
 
 	"vox/internal/pipeline"
+	"vox/internal/transcribe"
 )
+
+type fakeTranscriber struct {
+	text string
+	err  error
+	got  []byte
+}
+
+func (f *fakeTranscriber) Transcribe(_ context.Context, wav []byte, _ transcribe.TranscribeOptions) (string, error) {
+	f.got = wav
+	return f.text, f.err
+}
+
+func TestTranscribeStageUsesInterface(t *testing.T) {
+	ft := &fakeTranscriber{text: "hello world"}
+	stage := transcribeStage(ft, transcribe.TranscribeOptions{})
+
+	r := &pipeline.Result{RawAudio: []byte("fake-wav")}
+	if err := stage(context.Background(), r); err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if r.RawText != "hello world" {
+		t.Errorf("RawText = %q, want %q", r.RawText, "hello world")
+	}
+	if r.OutputText != "hello world" {
+		t.Errorf("OutputText = %q, want %q", r.OutputText, "hello world")
+	}
+	if string(ft.got) != "fake-wav" {
+		t.Errorf("transcriber got %q, want %q", ft.got, "fake-wav")
+	}
+}
 
 func TestFilterBlankStage_EmptyText(t *testing.T) {
 	stage := filterBlankStage()

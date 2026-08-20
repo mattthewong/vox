@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"vox/internal/hotkey"
-	"vox/internal/whispermodel"
+	"vox/internal/sttmodel"
 )
 
 // Config holds runtime configuration for the vox dictation tool.
@@ -63,8 +63,8 @@ func Load() Config {
 	if modelID == "" {
 		modelID = prefs.Model
 	}
-	if _, ok := whispermodel.ByID(modelID); !ok {
-		modelID = whispermodel.DefaultID
+	if _, ok := sttmodel.ByID(modelID); !ok {
+		modelID = sttmodel.DefaultID
 	}
 
 	return Config{
