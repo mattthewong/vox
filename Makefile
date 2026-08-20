@@ -1,4 +1,4 @@
-.PHONY: test-parakeet build app test test-short test-race lint run setup start stop status clean install deps fmt ci check-fmt
+.PHONY: build app test test-short test-race test-parakeet voxbench bench-libri bench-personal lint run setup start stop status clean install deps fmt ci check-fmt
 
 export CGO_LDFLAGS := -Wl,-no_warn_duplicate_libraries
 
@@ -10,6 +10,11 @@ build:
 	go build -o bin/vox ./cmd/vox
 
 # app wraps bin/vox in a real .app bundle so TCC keys perms on bundle ID.
+#
+# bundle-dylibs.sh copies the sherpa-onnx dylibs in and repoints the binary at
+# them; without it the bundle only runs on the machine that built it. It also
+# does the codesigning, because install_name_tool invalidates signatures —
+# signing here instead would produce a bundle that fails `codesign --verify`.
 app: build
 	@rm -rf $(APP_BUNDLE)
 	@mkdir -p $(APP_BUNDLE)/Contents/MacOS
@@ -24,11 +29,26 @@ test:
 test-short:
 	go test -short -v ./...
 
+test-race:
+	go test -race -short -v ./...
+
+# test-parakeet runs the tagged integration test against a real 460 MB
+# parakeet model. Excluded from `make test` so the default suite stays fast
+# and hermetic on machines without the model installed.
 test-parakeet:
 	go test -tags parakeet_integration -v ./internal/parakeet/
 
-test-race:
-	go test -race -short -v ./...
+voxbench:
+	go build -o bin/voxbench ./cmd/voxbench
+
+bench-libri: voxbench
+	./bench/fetch-libri.sh
+	./bin/voxbench -manifest bench/libri/manifest.jsonl -corpus libri-test-clean \
+		-engines base.en,parakeet-v2 -out bench/results-libri.md
+
+bench-personal: voxbench
+	./bin/voxbench -manifest bench/personal/manifest.jsonl -corpus personal-dictation \
+		-engines base.en,parakeet-v2 -out bench/results-personal.md
 
 lint:
 	go vet ./...
@@ -42,6 +62,13 @@ run:
 # safe to depend on from `start`. Permissions (Accessibility, Microphone)
 # are intentionally handled by Vox.app's first launch, not here — that way
 # TCC only prompts once, for the bundle identity, not twice (bare binary + bundle).
+#
+# This covers the default whisper path only. Parakeet needs no Homebrew
+# dependency: sherpa-onnx is linked into the binary through cgo, and its
+# dylibs are copied into the bundle by packaging/bundle-dylibs.sh (see `app`).
+# Its model is not pre-fetched here — there is no download-only entry point,
+# so parakeet-v2 downloads on first use when you select it from the menubar
+# or set VOX_STT_ENGINE=parakeet-v2.
 setup:
 	@set -eu; \
 	if ! command -v brew >/dev/null 2>&1; then \
