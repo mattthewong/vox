@@ -15,7 +15,7 @@ app: build
 	@mkdir -p $(APP_BUNDLE)/Contents/MacOS
 	@cp packaging/Info.plist $(APP_BUNDLE)/Contents/Info.plist
 	@cp bin/vox $(APP_BUNDLE)/Contents/MacOS/vox
-	@codesign --sign - --force --identifier $(APP_BUNDLE_ID) $(APP_BUNDLE) >/dev/null
+	@./packaging/bundle-dylibs.sh $(APP_BUNDLE) $(APP_BUNDLE_ID) >/dev/null
 	@echo "Built $(APP_BUNDLE) ($(APP_BUNDLE_ID))"
 
 test:

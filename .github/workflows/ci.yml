@@ -87,9 +87,14 @@ jobs:
           }
 
   # ── Cross-compile ─────────────────────────────────────────────────────
-  # Skipped until platform stubs are added for internal/hotkey and
-  # internal/inject (darwin-only packages today). Remove the if: guard
-  # once cross-platform support lands.
+  # Skipped until platform stubs are added for internal/hotkey,
+  # internal/inject, internal/ui and internal/parakeet (darwin-only packages
+  # today). Remove the if: guard once cross-platform support lands.
+  #
+  # internal/parakeet no longer links sherpa-onnx (it dlopens the library at
+  # first use), but the dlopen shim itself is cgo (dlfcn.h), so the package
+  # still cannot build under CGO_ENABLED=0. Cross-platform support needs a
+  # build-tagged no-op parakeet backend off darwin, same as the Cocoa stubs.
   cross-compile:
     if: false
     name: Cross-compile (${{ matrix.goos }})
