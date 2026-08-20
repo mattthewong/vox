@@ -388,6 +388,7 @@ func buildModelPresets() []ui.ModelPreset {
 		presets = append(presets, ui.ModelPreset{
 			ID:        m.ID,
 			Label:     m.Label,
+			Engine:    string(m.Engine),
 			Installed: sttmodel.IsInstalled(m),
 		})
 	}

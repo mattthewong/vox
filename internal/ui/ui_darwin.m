@@ -205,10 +205,10 @@ void uiInit(const char *hotkeyLabel) {
         [hotkeyPresetsItem setSubmenu:hotkeyPresetsMenu];
         [statusMenu addItem:hotkeyPresetsItem];
 
-        modelPresetsItem = [[NSMenuItem alloc] initWithTitle:@"Whisper Model"
+        modelPresetsItem = [[NSMenuItem alloc] initWithTitle:@"Speech Model"
                                                       action:nil
                                                keyEquivalent:@""];
-        modelPresetsMenu = [[NSMenu alloc] initWithTitle:@"Whisper Model"];
+        modelPresetsMenu = [[NSMenu alloc] initWithTitle:@"Speech Model"];
         [modelPresetsItem setSubmenu:modelPresetsMenu];
         [statusMenu addItem:modelPresetsItem];
 
@@ -308,10 +308,10 @@ void uiSetLastText(const char *text) {
 // into a set of trimmed components. Used so multi-hotkey configurations
 // light up *every* matching preset, not just nothing (which is what an
 // exact-string match against "fn,cmd+shift" would give us).
-// Separator + “Manage Downloaded Models” footer for the Whisper Model submenu.
+// Separator + “Manage Downloaded Models” footer for the Speech Model submenu.
 // Preserved across uiSetModelPresets rebuilds (that call removes only the
 // dynamic model rows, then re-adds this block).
-static void appendWhisperModelMenuFooter(void) {
+static void appendModelMenuFooter(void) {
     [modelPresetsMenu addItem:[NSMenuItem separatorItem]];
     if (modelRemoveParentItem == nil) {
         modelRemoveParentItem = [[NSMenuItem alloc] initWithTitle:@"Manage Downloaded Models"
@@ -381,19 +381,49 @@ void uiSetHotkeyCheckmark(const char *spec) {
     });
 }
 
-void uiSetModelPresets(const char **ids, const char **labels, const int *installed, int count, const char *current) {
+// engineHeaderTitle maps an engine identifier to the section header shown
+// above that engine's models. Unknown engines fall back to the raw value so a
+// new backend still renders a sane (if unstyled) header.
+static NSString *engineHeaderTitle(NSString *engine) {
+    if ([engine isEqualToString:@"whisper"])  return @"Whisper";
+    if ([engine isEqualToString:@"parakeet"]) return @"Parakeet";
+    return engine;
+}
+
+// Rebuilds the Speech Model submenu. Items are rendered in the order given;
+// each time engines[i] differs from the previous item a disabled section
+// header is inserted (preceded by a separator, except for the first section),
+// so the caller must pass models grouped by engine.
+void uiSetModelPresets(const char **ids, const char **labels, const char **engines,
+                       const int *installed, int count, const char *current) {
     NSMutableArray<NSString *> *idArr = [NSMutableArray arrayWithCapacity:count];
     NSMutableArray<NSString *> *labelArr = [NSMutableArray arrayWithCapacity:count];
+    NSMutableArray<NSString *> *engineArr = [NSMutableArray arrayWithCapacity:count];
     NSMutableArray<NSNumber *> *installedArr = [NSMutableArray arrayWithCapacity:count];
     for (int i = 0; i < count; i++) {
         [idArr addObject:[NSString stringWithUTF8String:ids[i]]];
         [labelArr addObject:[NSString stringWithUTF8String:labels[i]]];
+        [engineArr addObject:engines ? [NSString stringWithUTF8String:engines[i]] : @""];
         [installedArr addObject:[NSNumber numberWithInt:installed[i]]];
     }
     NSString *curr = current ? [NSString stringWithUTF8String:current] : @"";
     dispatch_async(dispatch_get_main_queue(), ^{
         [modelPresetsMenu removeAllItems];
+        NSString *lastEngine = nil;
         for (NSUInteger i = 0; i < idArr.count; i++) {
+            NSString *engine = engineArr[i];
+            if (lastEngine == nil || ![engine isEqualToString:lastEngine]) {
+                if (lastEngine != nil) {
+                    [modelPresetsMenu addItem:[NSMenuItem separatorItem]];
+                }
+                NSMenuItem *hdr = [[NSMenuItem alloc] initWithTitle:engineHeaderTitle(engine)
+                                                             action:nil
+                                                      keyEquivalent:@""];
+                [hdr setEnabled:NO];
+                [modelPresetsMenu addItem:hdr];
+                lastEngine = engine;
+            }
+
             NSString *title = labelArr[i];
             if (![installedArr[i] boolValue]) {
                 title = [title stringByAppendingString:@" (not downloaded)"];
@@ -408,7 +438,7 @@ void uiSetModelPresets(const char **ids, const char **labels, const int *install
             }
             [modelPresetsMenu addItem:item];
         }
-        appendWhisperModelMenuFooter();
+        appendModelMenuFooter();
     });
 }
 

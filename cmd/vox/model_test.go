@@ -188,3 +188,81 @@ func TestBuildModelRemovePresets_MultipleRemovable(t *testing.T) {
 // TestBuildModelPresetsGroupsByEngine locks in the ordering the menubar
 // depends on: the submenu renders one contiguous section per engine, which
 // only works if the catalog never interleaves them.
+func TestBuildModelPresetsGroupsByEngine(t *testing.T) {
+	isolateModelDirs(t)
+
+	got := buildModelPresets()
+	if len(got) != len(sttmodel.All()) {
+		t.Fatalf("presets = %d, want %d", len(got), len(sttmodel.All()))
+	}
+
+	// Whisper models must all precede parakeet models so the submenu renders
+	// as two contiguous sections.
+	sawWhisper, sawParakeet := false, false
+	for _, p := range got {
+		switch p.Engine {
+		case string(sttmodel.EngineParakeet):
+			sawParakeet = true
+		case string(sttmodel.EngineWhisper):
+			sawWhisper = true
+			if sawParakeet {
+				t.Errorf("whisper model %q appears after a parakeet model", p.ID)
+			}
+		default:
+			t.Errorf("model %q has unknown engine %q", p.ID, p.Engine)
+		}
+	}
+	if !sawWhisper {
+		t.Error("no whisper models in presets")
+	}
+	if !sawParakeet {
+		t.Error("no parakeet models in presets")
+	}
+}
+
+func TestBuildModelPresetsMarksInstalled(t *testing.T) {
+	isolateModelDirs(t)
+
+	for _, p := range buildModelPresets() {
+		if p.Installed {
+			t.Errorf("model %q reported installed in empty dir", p.ID)
+		}
+	}
+
+	installModel(t, "base.en")
+
+	var found bool
+	for _, p := range buildModelPresets() {
+		if p.ID == "base.en" {
+			found = true
+			if !p.Installed {
+				t.Error("base.en should be marked installed")
+			}
+		}
+	}
+	if !found {
+		t.Error("base.en missing from presets")
+	}
+}
+
+func TestBuildModelRemovePresetsOnlyInstalled(t *testing.T) {
+	isolateModelDirs(t)
+
+	if got := buildModelRemovePresets(); len(got) != 0 {
+		t.Errorf("remove presets = %d, want 0 when nothing installed", len(got))
+	}
+
+	installArchiveModel(t, "parakeet-v2")
+
+	got := buildModelRemovePresets()
+	if len(got) != 1 {
+		t.Fatalf("remove presets = %d, want 1", len(got))
+	}
+	if got[0].ID != "parakeet-v2" {
+		t.Errorf("ID = %q, want parakeet-v2", got[0].ID)
+	}
+	// Sole installed model must not be removable.
+	if got[0].Removable {
+		t.Error("last installed model should not be removable")
+	}
+}
