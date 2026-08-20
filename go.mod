@@ -3,6 +3,7 @@ module vox
 go 1.24.0
 
 require (
+	github.com/k2-fsa/sherpa-onnx-go-macos v1.13.6
 	github.com/launchdarkly/go-sdk-common/v3 v3.5.0
 	github.com/launchdarkly/go-server-sdk/v7 v7.14.7
 	golang.design/x/mainthread v0.3.0

@@ -24,6 +24,7 @@ const (
 	KeyStreamingOverlay = "vox-streaming-overlay"
 	KeyAIModel          = "vox-ai-model"
 	KeyAnthropicKey     = "vox-anthropic-key"
+	KeySTTEngine        = "vox-stt-engine"
 )
 
 // ldClient is the subset of the LD SDK we use, extracted as an interface so
@@ -145,6 +146,41 @@ func (c *Client) AIModel() string {
 		return *c.userCfg.AIModel
 	}
 	return defaultModel
+}
+
+// STTEngine returns the configured speech-to-text engine, or "" when nothing
+// is configured at the flag, env, or file layer.
+//
+// The value is either a catalog model ID ("parakeet-v2", "base.en") or a bare
+// engine name ("whisper", "parakeet"). cmd/vox's resolveEngineModel maps it to
+// a concrete model.
+//
+// Precedence within this function: LD flag > VOX_STT_ENGINE > config.yaml.
+//
+// Returning "" rather than a hardcoded default is deliberate. Two lower
+// layers live outside this package: the menubar preference in prefs.json
+// (read by config.Load) and the catalog default. Substituting "whisper" here
+// would mask a saved menubar selection, which is the more specific signal.
+// The full chain, assembled by config.Load, is:
+//
+//	LD flag > VOX_STT_ENGINE > config.yaml > prefs.json > sttmodel.DefaultID
+func (c *Client) STTEngine() string {
+	if c.ld != nil {
+		val, detail, _ := c.ld.StringVariationDetailCtx(
+			context.Background(), KeySTTEngine, c.ctx, "",
+		)
+		if detail.Reason.GetKind() != ldreason.EvalReasonError && val != "" {
+			return val
+		}
+		// Flag not found, error, or empty value — fall through.
+	}
+	if v := os.Getenv("VOX_STT_ENGINE"); v != "" {
+		return v
+	}
+	if c.userCfg.STTEngine != nil && *c.userCfg.STTEngine != "" {
+		return *c.userCfg.STTEngine
+	}
+	return ""
 }
 
 // AnthropicKey returns the Anthropic API key to use and which source it came from.

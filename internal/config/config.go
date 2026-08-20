@@ -34,6 +34,15 @@ type Config struct {
 // Boolean settings that don't have an env var (Sounds, AutoPaste)
 // just use prefs > default.
 //
+// ModelID selects both engine and model, and has its own chain:
+//
+//	VOX_STT_ENGINE > VOX_WHISPER_MODEL_ID (legacy alias) > prefs.json >
+//	sttmodel.DefaultID
+//
+// A LaunchDarkly flag sits above all of these; flags.Client.STTEngine
+// resolves that layer and returns "" when it has no opinion, so cmd/vox can
+// prefer it over the value computed here without masking a menubar selection.
+//
 // A malformed preferences file is ignored (we fall back to defaults rather
 // than refusing to start). A malformed VOX_HOTKEY is fatal.
 func Load() Config {
@@ -59,11 +68,23 @@ func Load() Config {
 	if v := os.Getenv("VOX_HOLD_TO_TALK"); v != "" {
 		holdToTalk = parseBool(v, true)
 	}
-	modelID := os.Getenv("VOX_WHISPER_MODEL_ID")
+	// VOX_STT_ENGINE is the single knob for engine and model selection. Its
+	// value is either a catalog model ID ("parakeet-v2", "small.en") or a
+	// bare engine name ("whisper", "parakeet"); cmd/vox's resolveEngineModel
+	// interprets it. VOX_WHISPER_MODEL_ID remains as a deprecated alias.
+	//
+	// The value is passed through unvalidated. Rejecting unknown values here
+	// would break bare engine names, which are not catalog IDs.
+	// resolveEngineModel falls back to the default for anything it cannot
+	// resolve, so a typo degrades to whisper rather than failing startup.
+	modelID := os.Getenv("VOX_STT_ENGINE")
+	if modelID == "" {
+		modelID = os.Getenv("VOX_WHISPER_MODEL_ID")
+	}
 	if modelID == "" {
 		modelID = prefs.Model
 	}
-	if _, ok := sttmodel.ByID(modelID); !ok {
+	if modelID == "" {
 		modelID = sttmodel.DefaultID
 	}
 

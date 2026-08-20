@@ -1,4 +1,4 @@
-.PHONY: build app test test-short test-race lint run setup start stop status clean install deps fmt ci check-fmt
+.PHONY: test-parakeet build app test test-short test-race lint run setup start stop status clean install deps fmt ci check-fmt
 
 export CGO_LDFLAGS := -Wl,-no_warn_duplicate_libraries
 
@@ -23,6 +23,9 @@ test:
 
 test-short:
 	go test -short -v ./...
+
+test-parakeet:
+	go test -tags parakeet_integration -v ./internal/parakeet/
 
 test-race:
 	go test -race -short -v ./...

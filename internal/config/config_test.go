@@ -6,14 +6,31 @@ import (
 	"testing"
 
 	"vox/internal/hotkey"
+	"vox/internal/sttmodel"
 )
 
+// isolateModelEnv makes model-ID resolution independent of the developer's
+// machine. Without it these tests read the real prefs.json and inherit any
+// VOX_STT_ENGINE / VOX_WHISPER_MODEL_ID already exported in the shell, so they
+// pass on clean CI and fail on a working dev box. Both model roots are
+// redirected too, so nothing here can observe a locally installed model.
+//
+// Individual tests override the specific variable under test after calling it.
+func isolateModelEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("VOX_MODEL_DIR", t.TempDir())
+	t.Setenv("WHISPER_MODEL_DIR", t.TempDir())
+	t.Setenv("VOX_PREFS_PATH", filepath.Join(t.TempDir(), "prefs.json"))
+	t.Setenv("VOX_STT_ENGINE", "")
+	t.Setenv("VOX_WHISPER_MODEL_ID", "")
+}
+
 func TestLoadDefaults(t *testing.T) {
+	isolateModelEnv(t)
 	t.Setenv("VOX_LANGUAGE", "")
 	t.Setenv("VOX_HOLD_TO_TALK", "")
 	t.Setenv("VOX_VERBOSE", "")
 	t.Setenv("VOX_HOTKEY", "")
-	t.Setenv("VOX_PREFS_PATH", filepath.Join(t.TempDir(), "no-such-prefs.json"))
 
 	cfg := Load()
 
@@ -35,6 +52,7 @@ func TestLoadDefaults(t *testing.T) {
 }
 
 func TestLoadFromEnv(t *testing.T) {
+	isolateModelEnv(t)
 	t.Setenv("VOX_LANGUAGE", "en")
 	t.Setenv("VOX_HOLD_TO_TALK", "false")
 	t.Setenv("VOX_VERBOSE", "true")
@@ -54,6 +72,72 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.ModelID != "small.en" {
 		t.Errorf("ModelID = %q, want %q", cfg.ModelID, "small.en")
+	}
+}
+
+func TestModelIDDefault(t *testing.T) {
+	isolateModelEnv(t)
+
+	cfg := Load()
+	if cfg.ModelID != sttmodel.DefaultID {
+		t.Errorf("ModelID = %q, want %q", cfg.ModelID, sttmodel.DefaultID)
+	}
+}
+
+func TestModelIDAcceptsParakeet(t *testing.T) {
+	isolateModelEnv(t)
+	t.Setenv("VOX_STT_ENGINE", "parakeet-v2")
+
+	cfg := Load()
+	if cfg.ModelID != "parakeet-v2" {
+		t.Errorf("ModelID = %q, want parakeet-v2", cfg.ModelID)
+	}
+}
+
+func TestModelIDAcceptsBareEngineName(t *testing.T) {
+	// VOX_STT_ENGINE carries either a model ID or a bare engine name.
+	// config.Load passes the raw value through; resolveEngineModel in
+	// cmd/vox interprets it. Load must not reject "parakeet" just because
+	// it is not a catalog ID.
+	isolateModelEnv(t)
+	t.Setenv("VOX_STT_ENGINE", "parakeet")
+
+	cfg := Load()
+	if cfg.ModelID != "parakeet" {
+		t.Errorf("ModelID = %q, want parakeet (passed through verbatim)", cfg.ModelID)
+	}
+}
+
+func TestModelIDLegacyEnvStillWorks(t *testing.T) {
+	isolateModelEnv(t)
+	t.Setenv("VOX_WHISPER_MODEL_ID", "small.en")
+
+	cfg := Load()
+	if cfg.ModelID != "small.en" {
+		t.Errorf("ModelID = %q, want small.en", cfg.ModelID)
+	}
+}
+
+func TestModelIDNewEnvBeatsLegacy(t *testing.T) {
+	isolateModelEnv(t)
+	t.Setenv("VOX_STT_ENGINE", "parakeet-v2")
+	t.Setenv("VOX_WHISPER_MODEL_ID", "small.en")
+
+	cfg := Load()
+	if cfg.ModelID != "parakeet-v2" {
+		t.Errorf("ModelID = %q, want parakeet-v2", cfg.ModelID)
+	}
+}
+
+func TestModelIDFallsBackToPref(t *testing.T) {
+	isolateModelEnv(t)
+
+	if err := SavePref(func(p *Prefs) { p.Model = "small.en" }); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Load()
+	if cfg.ModelID != "small.en" {
+		t.Errorf("ModelID = %q, want small.en from prefs", cfg.ModelID)
 	}
 }
 
