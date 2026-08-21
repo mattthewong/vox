@@ -390,26 +390,42 @@ static NSString *engineHeaderTitle(NSString *engine) {
     return engine;
 }
 
-// Rebuilds the Speech Model submenu. Items are rendered in the order given;
-// each time engines[i] differs from the previous item a disabled section
-// header is inserted (preceded by a separator, except for the first section),
-// so the caller must pass models grouped by engine.
+// Rebuilds the Speech Model submenu with two-line items: the model name on
+// line 1 and a speed/accuracy/size descriptor on line 2 in a smaller, secondary
+// color. Badges (Default, Recommended, language scope) appear right-aligned.
+// Tooltips carry the evidence behind the descriptor (measured WER, etc).
 void uiSetModelPresets(const char **ids, const char **labels, const char **engines,
+                       const char **descriptors, const char **badges, const char **blurbs,
                        const int *installed, int count, const char *current) {
     NSMutableArray<NSString *> *idArr = [NSMutableArray arrayWithCapacity:count];
     NSMutableArray<NSString *> *labelArr = [NSMutableArray arrayWithCapacity:count];
     NSMutableArray<NSString *> *engineArr = [NSMutableArray arrayWithCapacity:count];
+    NSMutableArray<NSString *> *descArr = [NSMutableArray arrayWithCapacity:count];
+    NSMutableArray<NSString *> *badgeArr = [NSMutableArray arrayWithCapacity:count];
+    NSMutableArray<NSString *> *blurbArr = [NSMutableArray arrayWithCapacity:count];
     NSMutableArray<NSNumber *> *installedArr = [NSMutableArray arrayWithCapacity:count];
     for (int i = 0; i < count; i++) {
         [idArr addObject:[NSString stringWithUTF8String:ids[i]]];
         [labelArr addObject:[NSString stringWithUTF8String:labels[i]]];
         [engineArr addObject:engines ? [NSString stringWithUTF8String:engines[i]] : @""];
+        [descArr addObject:descriptors ? [NSString stringWithUTF8String:descriptors[i]] : @""];
+        [badgeArr addObject:badges ? [NSString stringWithUTF8String:badges[i]] : @""];
+        [blurbArr addObject:blurbs ? [NSString stringWithUTF8String:blurbs[i]] : @""];
         [installedArr addObject:[NSNumber numberWithInt:installed[i]]];
     }
     NSString *curr = current ? [NSString stringWithUTF8String:current] : @"";
     dispatch_async(dispatch_get_main_queue(), ^{
         [modelPresetsMenu removeAllItems];
         NSString *lastEngine = nil;
+
+        // Secondary-line font: small system font in the label's secondary color.
+        NSFont *descFont = [NSFont systemFontOfSize:[NSFont smallSystemFontSize]];
+        NSColor *descColor = [NSColor secondaryLabelColor];
+        NSDictionary *descAttrs = @{
+            NSFontAttributeName: descFont,
+            NSForegroundColorAttributeName: descColor,
+        };
+
         for (NSUInteger i = 0; i < idArr.count; i++) {
             NSString *engine = engineArr[i];
             if (lastEngine == nil || ![engine isEqualToString:lastEngine]) {
@@ -424,15 +440,59 @@ void uiSetModelPresets(const char **ids, const char **labels, const char **engin
                 lastEngine = engine;
             }
 
-            NSString *title = labelArr[i];
-            if (![installedArr[i] boolValue]) {
-                title = [title stringByAppendingString:@" (not downloaded)"];
+            // Build the two-line attributed title.
+            NSString *name = labelArr[i];
+            NSString *desc = descArr[i];
+            BOOL isInstalled = [installedArr[i] boolValue];
+
+            // Append download state to the descriptor line.
+            if (!isInstalled) {
+                if (desc.length > 0) {
+                    desc = [desc stringByAppendingString:@" · not downloaded"];
+                } else {
+                    desc = @"not downloaded";
+                }
             }
-            NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:title
+
+            NSMutableAttributedString *attrTitle = [[NSMutableAttributedString alloc]
+                initWithString:name
+                    attributes:@{NSFontAttributeName: [NSFont menuFontOfSize:0]}];
+
+            if (desc.length > 0) {
+                NSAttributedString *descLine = [[NSAttributedString alloc]
+                    initWithString:[@"\n" stringByAppendingString:desc]
+                        attributes:descAttrs];
+                [attrTitle appendAttributedString:descLine];
+            }
+
+            // Use a plain title as fallback (the attributed title takes
+            // precedence when set, but title is what accessibility reads).
+            NSString *plainTitle = name;
+            if (!isInstalled) {
+                plainTitle = [name stringByAppendingString:@" (not downloaded)"];
+            }
+
+            NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:plainTitle
                                                           action:@selector(modelClicked:)
                                                    keyEquivalent:@""];
+            [item setAttributedTitle:attrTitle];
             [item setTarget:appDelegate];
             [item setRepresentedObject:idArr[i]];
+
+            // Tooltip: evidence behind the descriptor.
+            NSString *blurb = blurbArr[i];
+            if (blurb.length > 0) {
+                [item setToolTip:blurb];
+            }
+
+            // Badge: right-aligned pill (macOS 14+).
+            NSString *badge = badgeArr[i];
+            if (badge.length > 0) {
+                if (@available(macOS 14.0, *)) {
+                    [item setBadge:[[NSMenuItemBadge alloc] initWithString:badge]];
+                }
+            }
+
             if ([curr isEqualToString:idArr[i]]) {
                 [item setState:NSControlStateValueOn];
             }

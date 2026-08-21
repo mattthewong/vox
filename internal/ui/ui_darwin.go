@@ -18,7 +18,7 @@ void uiSetLastText(const char *text);
 void uiSetHotkeyPresets(const char **specs, const char **labels, int count, const char *current);
 void uiSetHotkeyCheckmark(const char *spec);
 void uiSetHotkeyLabel(const char *label);
-void uiSetModelPresets(const char **ids, const char **labels, const char **engines, const int *installed, int count, const char *current);
+void uiSetModelPresets(const char **ids, const char **labels, const char **engines, const char **descriptors, const char **badges, const char **blurbs, const int *installed, int count, const char *current);
 void uiSetModelRemovePresets(const char **ids, const char **labels, const int *removable, int count);
 void uiSetModelCheckmark(const char *id);
 void uiSetModelMenuEnabled(int on);
@@ -77,8 +77,11 @@ type ModelPreset struct {
 	// Engine is "whisper" or "parakeet". Consecutive presets sharing an
 	// engine render as one section; the submenu inserts a header each time
 	// the value changes, so callers must keep engines contiguous.
-	Engine    string
-	Installed bool
+	Engine     string
+	Descriptor string // secondary line: "Fast · Good accuracy · 142 MB"
+	Badge      string // right-aligned tag: "Default", "Recommended", "Multilingual", etc.
+	Blurb      string // tooltip on hover
+	Installed  bool
 }
 
 // ModelRemovePreset is one installed model listed under Manage Downloaded Models.
@@ -225,11 +228,17 @@ func SetModelPresets(presets []ModelPreset, current string) {
 	ids := make([]*C.char, len(presets))
 	labels := make([]*C.char, len(presets))
 	engines := make([]*C.char, len(presets))
+	descriptors := make([]*C.char, len(presets))
+	badges := make([]*C.char, len(presets))
+	blurbs := make([]*C.char, len(presets))
 	installed := make([]C.int, len(presets))
 	for i, p := range presets {
 		ids[i] = C.CString(p.ID)
 		labels[i] = C.CString(p.Label)
 		engines[i] = C.CString(p.Engine)
+		descriptors[i] = C.CString(p.Descriptor)
+		badges[i] = C.CString(p.Badge)
+		blurbs[i] = C.CString(p.Blurb)
 		installed[i] = boolToC(p.Installed)
 	}
 	defer func() {
@@ -237,6 +246,9 @@ func SetModelPresets(presets []ModelPreset, current string) {
 			C.free(unsafe.Pointer(ids[i]))
 			C.free(unsafe.Pointer(labels[i]))
 			C.free(unsafe.Pointer(engines[i]))
+			C.free(unsafe.Pointer(descriptors[i]))
+			C.free(unsafe.Pointer(badges[i]))
+			C.free(unsafe.Pointer(blurbs[i]))
 		}
 	}()
 	curr := C.CString(current)
@@ -245,6 +257,9 @@ func SetModelPresets(presets []ModelPreset, current string) {
 		(**C.char)(unsafe.Pointer(&ids[0])),
 		(**C.char)(unsafe.Pointer(&labels[0])),
 		(**C.char)(unsafe.Pointer(&engines[0])),
+		(**C.char)(unsafe.Pointer(&descriptors[0])),
+		(**C.char)(unsafe.Pointer(&badges[0])),
+		(**C.char)(unsafe.Pointer(&blurbs[0])),
 		(*C.int)(unsafe.Pointer(&installed[0])),
 		C.int(len(presets)),
 		curr,

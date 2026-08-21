@@ -386,10 +386,13 @@ func buildModelPresets() []ui.ModelPreset {
 	presets := make([]ui.ModelPreset, 0, len(models))
 	for _, m := range models {
 		presets = append(presets, ui.ModelPreset{
-			ID:        m.ID,
-			Label:     m.Label,
-			Engine:    string(m.Engine),
-			Installed: sttmodel.IsInstalled(m),
+			ID:         m.ID,
+			Label:      m.Label,
+			Engine:     string(m.Engine),
+			Descriptor: m.Descriptor,
+			Badge:      m.Badge,
+			Blurb:      m.Blurb,
+			Installed:  sttmodel.IsInstalled(m),
 		})
 	}
 	return presets
