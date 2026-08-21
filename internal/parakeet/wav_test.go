@@ -138,6 +138,27 @@ func TestDurationIgnoresExtraChunks(t *testing.T) {
 	}
 }
 
+func TestDecodeWAVLargeChunkSize(t *testing.T) {
+	// A WAV with a data chunk size field larger than the actual data.
+	// The truncation guard at wav.go:38-39 should clamp it.
+	wav := buildWAV(t, 16000, []int16{100, 200, 300})
+	// Overwrite the data chunk size with 0xFFFFFFFF (much larger than file).
+	// Find the "data" marker and patch the size after it.
+	for i := 0; i+8 <= len(wav); i++ {
+		if string(wav[i:i+4]) == "data" {
+			binary.LittleEndian.PutUint32(wav[i+4:i+8], 0xFFFFFFFE)
+			break
+		}
+	}
+	got, _, err := DecodeWAV(wav)
+	if err != nil {
+		t.Fatalf("DecodeWAV with large chunk size: %v", err)
+	}
+	if len(got) != 3 {
+		t.Errorf("len = %d, want 3 (truncated to actual data)", len(got))
+	}
+}
+
 func TestDurationRejectsInvalid(t *testing.T) {
 	if _, err := Duration([]byte("nope")); err == nil {
 		t.Error("expected error for invalid WAV")

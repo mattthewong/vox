@@ -78,6 +78,32 @@ func TestTranscribeRespectsContextCancellation(t *testing.T) {
 	}
 }
 
+func TestIdleTimerReleasesImpl(t *testing.T) {
+	r := New(Config{
+		ModelDir:    t.TempDir(),
+		IdleTimeout: 50 * time.Millisecond, // very short for testing
+	})
+	defer r.Close()
+
+	// Simulate loading an impl by setting the field directly (we can't
+	// actually load sherpa in unit tests without the dylib). This tests
+	// the timer mechanism, not the full model load.
+	r.mu.Lock()
+	r.impl = &recognizerHandle{} // non-nil sentinel
+	r.resetIdleTimerLocked()
+	r.mu.Unlock()
+
+	// Wait for the idle timer to fire (with margin).
+	time.Sleep(200 * time.Millisecond)
+
+	r.mu.Lock()
+	released := r.impl == nil
+	r.mu.Unlock()
+	if !released {
+		t.Error("impl should have been released by idle timer")
+	}
+}
+
 func TestTranscribeAfterCloseFails(t *testing.T) {
 	r := New(Config{ModelDir: t.TempDir()})
 	r.Close()

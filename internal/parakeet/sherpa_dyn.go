@@ -80,6 +80,7 @@ static void vox_call_destroy_result(
 import "C"
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -224,24 +225,16 @@ func candidateLibDirs() []string {
 // runWithTimeout runs cmd, killing it after d. `go list` normally returns in
 // milliseconds; the timeout only guards against a wedged toolchain.
 func runWithTimeout(cmd *exec.Cmd, d time.Duration) ([]byte, error) {
-	type result struct {
-		out []byte
-		err error
-	}
-	ch := make(chan result, 1)
-	go func() {
-		out, err := cmd.Output()
-		ch <- result{out, err}
-	}()
-	select {
-	case r := <-ch:
-		return r.out, r.err
-	case <-time.After(d):
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), d)
+	defer cancel()
+	cmd2 := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
+	cmd2.Dir = cmd.Dir
+	cmd2.Env = cmd.Env
+	out, err := cmd2.Output()
+	if ctx.Err() != nil {
 		return nil, fmt.Errorf("timed out after %v", d)
 	}
+	return out, err
 }
 
 // recognizerHandle wraps the C recognizer pointer.

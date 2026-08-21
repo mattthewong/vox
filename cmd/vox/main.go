@@ -76,9 +76,9 @@ var settings runtimeSettings
 // pause click, so the user expects that one final transcription to land.
 var processMu sync.Mutex
 
-// currentWhisperModelID holds the catalog model ID (e.g. base.en) loaded by
-// whisper-server so removing a model can switch away from the active file first.
-var currentWhisperModelID atomic.Value // string
+// currentModelID holds the catalog model ID (e.g. base.en, parakeet-v2) loaded
+// by the active engine so removing a model can switch away first.
+var currentModelID atomic.Value // string
 
 // modelMu serializes model-change and model-delete operations so they cannot
 // interleave (e.g. switching to a model while a delete is mid-fallback).
@@ -292,7 +292,7 @@ func run() {
 	ui.Init(hotkeyLabel)
 	ui.SetState(ui.StateIdle)
 	ui.SetHotkeyPresets(hotkeyPresets, cfg.Hotkey)
-	currentWhisperModelID.Store(selectedModel.ID)
+	currentModelID.Store(selectedModel.ID)
 	refreshModelMenus()
 	ui.SetMode(cfg.HoldToTalk)
 	ui.SetSoundsEnabled(cfg.SoundsEnabled)
@@ -415,13 +415,17 @@ func buildModelRemovePresets() []ui.ModelRemovePreset {
 }
 
 func refreshModelMenus() {
-	id, _ := currentWhisperModelID.Load().(string)
+	id, _ := currentModelID.Load().(string)
 	ui.SetModelPresets(buildModelPresets(), id)
 	ui.SetModelRemovePresets(buildModelRemovePresets())
 }
 
 // activateModel switches to the given model, downloading it if needed and
 // tearing down the previous engine's backend.
+//
+// Precondition: caller must hold modelMu. activateModel reads engines.get()
+// outside the write lock and mutates the returned state inside it; concurrent
+// callers would race on the engine pointer without external serialization.
 func activateModel(ctx context.Context, engines *engineHolder, recorder *audio.Recorder, model sttmodel.Model) error {
 	if !sttmodel.IsInstalled(model) {
 		err := sttmodel.Download(ctx, model, func(downloaded, total int64) {
@@ -597,7 +601,7 @@ func modelChangeWatcher(ctx context.Context, logger *slog.Logger, engines *engin
 				continue
 			}
 
-			currentWhisperModelID.Store(model.ID)
+			currentModelID.Store(model.ID)
 			refreshModelMenus()
 			ui.SetStatusLine("Status: Idle")
 			ui.SetModelMenuEnabled(true)
@@ -633,7 +637,7 @@ func modelDeleteWatcher(ctx context.Context, logger *slog.Logger, engines *engin
 			ui.SetModelMenuEnabled(false)
 			ui.SetStatusLine(fmt.Sprintf("Status: Removing %s…", model.ID))
 
-			active, _ := currentWhisperModelID.Load().(string)
+			active, _ := currentModelID.Load().(string)
 			if modelID == active {
 				// Prefer a fallback from the same engine family so deleting a
 				// model does not silently move the user between whisper and
@@ -654,7 +658,7 @@ func modelDeleteWatcher(ctx context.Context, logger *slog.Logger, engines *engin
 					modelMu.Unlock()
 					continue
 				}
-				currentWhisperModelID.Store(fallback.ID)
+				currentModelID.Store(fallback.ID)
 				if err := config.SavePref(func(p *config.Prefs) { p.Model = fallback.ID }); err != nil {
 					logger.Warn("save prefs", "field", "model", "error", err)
 				}
