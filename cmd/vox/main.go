@@ -30,11 +30,11 @@ import (
 	"vox/internal/inject"
 	"vox/internal/pipeline"
 	"vox/internal/prompt"
+	"vox/internal/sttmodel"
 	"vox/internal/transcribe"
 	"vox/internal/ui"
 	"vox/internal/userconfig"
 	"vox/internal/vocab"
-	"vox/internal/whispermodel"
 	"vox/internal/whisperserver"
 )
 
@@ -160,13 +160,13 @@ func run() {
 	}
 
 	// Resolve selected whisper model + start the embedded whisper-server child.
-	selectedModel, ok := whispermodel.ByID(cfg.ModelID)
+	selectedModel, ok := sttmodel.ByID(cfg.ModelID)
 	if !ok {
-		selectedModel, _ = whispermodel.ByID(whispermodel.DefaultID)
+		selectedModel, _ = sttmodel.ByID(sttmodel.DefaultID)
 	}
-	if !whispermodel.IsInstalled(selectedModel) {
+	if !sttmodel.IsInstalled(selectedModel) {
 		fmt.Printf("Selected model %q is not installed, downloading...\n", selectedModel.ID)
-		if err := whispermodel.Download(ctx, selectedModel, nil); err != nil {
+		if err := sttmodel.Download(ctx, selectedModel, nil); err != nil {
 			fmt.Fprintf(os.Stderr, "Error downloading model %q: %v\n", selectedModel.ID, err)
 			os.Exit(1)
 		}
@@ -176,7 +176,7 @@ func run() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	modelPath, err := whispermodel.Path(selectedModel)
+	modelPath, err := sttmodel.ResolvePath(selectedModel)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -365,13 +365,13 @@ func shutdownWatcher(cancel context.CancelFunc, logger *slog.Logger, recorder *a
 }
 
 func buildModelPresets() []ui.ModelPreset {
-	models := whispermodel.All()
+	models := sttmodel.All()
 	presets := make([]ui.ModelPreset, 0, len(models))
 	for _, m := range models {
 		presets = append(presets, ui.ModelPreset{
 			ID:        m.ID,
 			Label:     m.Label,
-			Installed: whispermodel.IsInstalled(m),
+			Installed: sttmodel.IsInstalled(m),
 		})
 	}
 	return presets
@@ -379,9 +379,9 @@ func buildModelPresets() []ui.ModelPreset {
 
 func buildModelRemovePresets() []ui.ModelRemovePreset {
 	var out []ui.ModelRemovePreset
-	nInstalled := whispermodel.InstalledCount()
-	for _, m := range whispermodel.All() {
-		if whispermodel.IsInstalled(m) {
+	nInstalled := sttmodel.InstalledCount()
+	for _, m := range sttmodel.All() {
+		if sttmodel.IsInstalled(m) {
 			label := m.Label
 			if nInstalled <= 1 {
 				label = m.Label + " (required)"
@@ -402,9 +402,9 @@ func refreshModelMenus() {
 	ui.SetModelRemovePresets(buildModelRemovePresets())
 }
 
-func activateWhisperModel(ctx context.Context, whisperClient *transcribe.Client, whisperSrv *whisperserver.Server, model whispermodel.Model) error {
-	if !whispermodel.IsInstalled(model) {
-		err := whispermodel.Download(ctx, model, func(downloaded, total int64) {
+func activateWhisperModel(ctx context.Context, whisperClient *transcribe.Client, whisperSrv *whisperserver.Server, model sttmodel.Model) error {
+	if !sttmodel.IsInstalled(model) {
+		err := sttmodel.Download(ctx, model, func(downloaded, total int64) {
 			if total > 0 {
 				pct := (downloaded * 100) / total
 				ui.SetStatusLine(fmt.Sprintf("Status: Downloading %s (%d%%)…", model.ID, pct))
@@ -416,7 +416,7 @@ func activateWhisperModel(ctx context.Context, whisperClient *transcribe.Client,
 			return err
 		}
 	}
-	path, err := whispermodel.Path(model)
+	path, err := sttmodel.ResolvePath(model)
 	if err != nil {
 		return err
 	}
@@ -430,19 +430,19 @@ func activateWhisperModel(ctx context.Context, whisperClient *transcribe.Client,
 	return switchErr
 }
 
-func pickFallbackModel(excludeID string) (whispermodel.Model, error) {
+func pickFallbackModel(excludeID string) (sttmodel.Model, error) {
 	// Prefer any installed model that isn't the one being excluded.
-	for _, m := range whispermodel.All() {
+	for _, m := range sttmodel.All() {
 		if m.ID == excludeID {
 			continue
 		}
-		if whispermodel.IsInstalled(m) {
+		if sttmodel.IsInstalled(m) {
 			return m, nil
 		}
 	}
 	// No installed fallback found — return an error rather than silently
 	// triggering a download for a non-installed model.
-	return whispermodel.Model{}, fmt.Errorf("no installed fallback model (excluding %s)", excludeID)
+	return sttmodel.Model{}, fmt.Errorf("no installed fallback model (excluding %s)", excludeID)
 }
 
 func whisperLogPath() string {
@@ -513,7 +513,7 @@ func modelChangeWatcher(ctx context.Context, logger *slog.Logger, client *transc
 			return
 		case modelID := <-ui.OnModelChange():
 			modelMu.Lock()
-			model, ok := whispermodel.ByID(modelID)
+			model, ok := sttmodel.ByID(modelID)
 			if !ok {
 				logger.Warn("unknown model selected", "id", modelID)
 				modelMu.Unlock()
@@ -552,12 +552,12 @@ func modelDeleteWatcher(ctx context.Context, logger *slog.Logger, whisperClient 
 			return
 		case modelID := <-ui.OnModelDelete():
 			modelMu.Lock()
-			model, ok := whispermodel.ByID(modelID)
-			if !ok || !whispermodel.IsInstalled(model) {
+			model, ok := sttmodel.ByID(modelID)
+			if !ok || !sttmodel.IsInstalled(model) {
 				modelMu.Unlock()
 				continue
 			}
-			if whispermodel.InstalledCount() <= 1 {
+			if sttmodel.InstalledCount() <= 1 {
 				logger.Info("refusing remove: last downloaded model", "id", modelID)
 				ui.SetStatusLine("Status: Idle")
 				fmt.Printf("Can't remove your only downloaded model.\n")
@@ -592,7 +592,7 @@ func modelDeleteWatcher(ctx context.Context, logger *slog.Logger, whisperClient 
 				}
 			}
 
-			if err := whispermodel.Remove(model); err != nil {
+			if err := sttmodel.Remove(model); err != nil {
 				logger.Warn("remove model file", "id", model.ID, "error", err)
 				ui.SetStatusLine("Status: Remove failed")
 			} else {
@@ -889,8 +889,8 @@ func handleStopAndProcess(
 	fmt.Println("Ready!")
 }
 
-// transcribeStage returns a pipeline stage that sends audio to the Whisper API.
-func transcribeStage(client *transcribe.Client, opts transcribe.TranscribeOptions) pipeline.Stage {
+// transcribeStage returns a pipeline stage that converts recorded audio to text.
+func transcribeStage(client transcribe.Transcriber, opts transcribe.TranscribeOptions) pipeline.Stage {
 	return func(ctx context.Context, r *pipeline.Result) error {
 		text, err := client.Transcribe(ctx, r.RawAudio, opts)
 		if err != nil {

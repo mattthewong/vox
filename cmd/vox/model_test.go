@@ -4,25 +4,31 @@ import (
 	"os"
 	"testing"
 
-	"vox/internal/whispermodel"
+	"path/filepath"
+
+	"vox/internal/sttmodel"
 )
 
 func TestPickFallbackModel_MultipleInstalled(t *testing.T) {
 	t.Setenv("WHISPER_MODEL_DIR", t.TempDir())
+	t.Setenv("VOX_MODEL_DIR", t.TempDir())
 
 	// Install two models: tiny.en and base.en.
-	tiny, ok := whispermodel.ByID("tiny.en")
+	tiny, ok := sttmodel.ByID("tiny.en")
 	if !ok {
 		t.Fatal("ByID tiny.en")
 	}
-	base, ok := whispermodel.ByID("base.en")
+	base, ok := sttmodel.ByID("base.en")
 	if !ok {
 		t.Fatal("ByID base.en")
 	}
-	for _, m := range []whispermodel.Model{tiny, base} {
-		p, err := whispermodel.Path(m)
+	for _, m := range []sttmodel.Model{tiny, base} {
+		p, err := sttmodel.Path(m)
 		if err != nil {
 			t.Fatalf("Path %s: %v", m.ID, err)
+		}
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatalf("MkdirAll %s: %v", m.ID, err)
 		}
 		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
 			t.Fatalf("WriteFile %s: %v", m.ID, err)
@@ -50,15 +56,19 @@ func TestPickFallbackModel_MultipleInstalled(t *testing.T) {
 
 func TestPickFallbackModel_OnlyOneInstalled(t *testing.T) {
 	t.Setenv("WHISPER_MODEL_DIR", t.TempDir())
+	t.Setenv("VOX_MODEL_DIR", t.TempDir())
 
 	// Install only base.en.
-	base, ok := whispermodel.ByID("base.en")
+	base, ok := sttmodel.ByID("base.en")
 	if !ok {
 		t.Fatal("ByID base.en")
 	}
-	p, err := whispermodel.Path(base)
+	p, err := sttmodel.Path(base)
 	if err != nil {
 		t.Fatalf("Path: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
 	}
 	if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
@@ -73,6 +83,7 @@ func TestPickFallbackModel_OnlyOneInstalled(t *testing.T) {
 
 func TestPickFallbackModel_NoneInstalled(t *testing.T) {
 	t.Setenv("WHISPER_MODEL_DIR", t.TempDir())
+	t.Setenv("VOX_MODEL_DIR", t.TempDir())
 
 	_, err := pickFallbackModel("base.en")
 	if err == nil {
@@ -82,15 +93,19 @@ func TestPickFallbackModel_NoneInstalled(t *testing.T) {
 
 func TestBuildModelRemovePresets_LastModelProtected(t *testing.T) {
 	t.Setenv("WHISPER_MODEL_DIR", t.TempDir())
+	t.Setenv("VOX_MODEL_DIR", t.TempDir())
 
 	// Install one model.
-	base, ok := whispermodel.ByID("base.en")
+	base, ok := sttmodel.ByID("base.en")
 	if !ok {
 		t.Fatal("ByID base.en")
 	}
-	p, err := whispermodel.Path(base)
+	p, err := sttmodel.Path(base)
 	if err != nil {
 		t.Fatalf("Path: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
 	}
 	if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
@@ -110,16 +125,20 @@ func TestBuildModelRemovePresets_LastModelProtected(t *testing.T) {
 
 func TestBuildModelRemovePresets_MultipleRemovable(t *testing.T) {
 	t.Setenv("WHISPER_MODEL_DIR", t.TempDir())
+	t.Setenv("VOX_MODEL_DIR", t.TempDir())
 
 	// Install two models.
 	for _, id := range []string{"tiny.en", "base.en"} {
-		m, ok := whispermodel.ByID(id)
+		m, ok := sttmodel.ByID(id)
 		if !ok {
 			t.Fatalf("ByID %s", id)
 		}
-		p, err := whispermodel.Path(m)
+		p, err := sttmodel.Path(m)
 		if err != nil {
 			t.Fatalf("Path %s: %v", id, err)
+		}
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatalf("MkdirAll %s: %v", m.ID, err)
 		}
 		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
 			t.Fatalf("WriteFile %s: %v", id, err)
