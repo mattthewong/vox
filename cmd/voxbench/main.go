@@ -151,7 +151,7 @@ func runEngine(ctx context.Context, modelID string, entries []manifestEntry, ver
 	switch m.Engine {
 	case sttmodel.EngineParakeet:
 		// Disable idle unloading so the model stays resident for the run.
-		rec := parakeet.New(parakeet.Config{ModelDir: modelPath, IdleTimeout: time.Hour})
+		rec := parakeet.New(parakeet.Config{ModelDir: modelPath})
 		defer rec.Close()
 		tr = rec
 
