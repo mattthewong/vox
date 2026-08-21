@@ -14,8 +14,16 @@ func Remove(m Model) error {
 	if err != nil {
 		return err
 	}
+	// Clean temp artifacts at the resolved path (where the model lives).
 	os.Remove(p + ".part")
 	os.RemoveAll(p + ".staging")
+	// Also clean temp artifacts at the canonical path if it differs
+	// (Download creates them there, but ResolvePath may return the legacy path).
+	cp, cpErr := Path(m)
+	if cpErr == nil && cp != p {
+		os.Remove(cp + ".part")
+		os.RemoveAll(cp + ".staging")
+	}
 	if m.IsArchive() {
 		return os.RemoveAll(p)
 	}

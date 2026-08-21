@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"hash"
 	"io"
 	"net/http"
 	"os"
@@ -109,7 +108,7 @@ func fetchToFile(ctx context.Context, url, path string, onProgress func(int64, i
 	}
 	defer f.Close()
 
-	var hasher hash.Hash = sha256.New()
+	hasher := sha256.New()
 	pw := &progressWriter{
 		fn:       onProgress,
 		total:    resp.ContentLength,

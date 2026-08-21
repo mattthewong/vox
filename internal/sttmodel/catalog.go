@@ -233,6 +233,9 @@ func ResolvePath(m Model) (string, error) {
 // existsComplete reports whether a fully usable model exists at root.
 func existsComplete(m Model, root string) bool {
 	if m.IsArchive() {
+		if len(m.Files) == 0 {
+			return false // archive with no listed files is never complete
+		}
 		for _, f := range m.Files {
 			st, err := os.Stat(filepath.Join(root, f))
 			if err != nil || st.Size() == 0 {

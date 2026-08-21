@@ -30,9 +30,6 @@ func TestPickFallbackModel_MultipleInstalled(t *testing.T) {
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatalf("MkdirAll %s: %v", m.ID, err)
 		}
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			t.Fatalf("MkdirAll: %v", err)
-		}
 		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
 			t.Fatalf("WriteFile %s: %v", m.ID, err)
 		}
@@ -142,9 +139,6 @@ func TestBuildModelRemovePresets_MultipleRemovable(t *testing.T) {
 		}
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatalf("MkdirAll %s: %v", m.ID, err)
-		}
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			t.Fatalf("MkdirAll: %v", err)
 		}
 		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
 			t.Fatalf("WriteFile %s: %v", id, err)

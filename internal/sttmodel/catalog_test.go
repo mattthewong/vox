@@ -159,6 +159,28 @@ func TestLegacyWhisperDirFallback(t *testing.T) {
 	}
 }
 
+func TestRemoveAtLegacyPath(t *testing.T) {
+	newDir := t.TempDir()
+	legacy := t.TempDir()
+	t.Setenv("VOX_MODEL_DIR", newDir)
+	t.Setenv("WHISPER_MODEL_DIR", legacy)
+
+	m, _ := ByID("base.en")
+	legacyFile := filepath.Join(legacy, "ggml-base.en.bin")
+	if err := os.WriteFile(legacyFile, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !IsInstalled(m) {
+		t.Fatal("model should be installed at legacy path")
+	}
+	if err := Remove(m); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if IsInstalled(m) {
+		t.Error("model should no longer be installed after Remove")
+	}
+}
+
 func TestInstalledCountRespectsEngine(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("VOX_MODEL_DIR", dir)
