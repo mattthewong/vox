@@ -1,4 +1,4 @@
-.PHONY: build app test test-short test-race lint run setup start stop status clean install deps fmt ci check-fmt
+.PHONY: test-parakeet build app test test-short test-race lint run setup start stop status clean install deps fmt ci check-fmt
 
 export CGO_LDFLAGS := -Wl,-no_warn_duplicate_libraries
 
@@ -15,7 +15,7 @@ app: build
 	@mkdir -p $(APP_BUNDLE)/Contents/MacOS
 	@cp packaging/Info.plist $(APP_BUNDLE)/Contents/Info.plist
 	@cp bin/vox $(APP_BUNDLE)/Contents/MacOS/vox
-	@codesign --sign - --force --identifier $(APP_BUNDLE_ID) $(APP_BUNDLE) >/dev/null
+	@./packaging/bundle-dylibs.sh $(APP_BUNDLE) $(APP_BUNDLE_ID) >/dev/null
 	@echo "Built $(APP_BUNDLE) ($(APP_BUNDLE_ID))"
 
 test:
@@ -23,6 +23,9 @@ test:
 
 test-short:
 	go test -short -v ./...
+
+test-parakeet:
+	go test -tags parakeet_integration -v ./internal/parakeet/
 
 test-race:
 	go test -race -short -v ./...

@@ -104,6 +104,13 @@ make app        # outputs bin/Vox.app (macOS bundle, ad-hoc signed)
 make install    # installs bin/vox to /usr/local/bin/vox
 ```
 
+`make app` also copies the sherpa-onnx dylibs into `Contents/Frameworks`
+(`packaging/bundle-dylibs.sh`). That is what makes Parakeet work on other
+machines — and what takes the bundle from ~11 MiB to ~42 MiB. The binary does
+not link these libraries; Parakeet dlopens them on first use, so whisper-only
+sessions never load them and launch never depends on them. A bare `bin/vox`
+from `make build` finds them in your local Go module cache instead.
+
 ### Lifecycle
 
 ```bash
@@ -121,6 +128,52 @@ On first run, macOS prompts for two permissions. Grant them to **Vox** (`Vox.app
 
 The `.app` bundle uses a stable `CFBundleIdentifier` (`dev.vox.menubar`), so permissions survive rebuilds.
 
+## Speech engines
+
+Vox supports two local speech-to-text engines. Both run entirely on your
+machine with no network calls.
+
+| Engine | Model | Size | Notes |
+|---|---|---|---|
+| whisper | `tiny.en`, `base.en` (default), `small.en`, `medium.en`, `large-v3-turbo` | 75 MiB to 1.5 GiB | Runs via a local `whisper-server` process |
+| parakeet | `parakeet-v2` (English), `parakeet-v3` (25 European languages) | ~460 MiB | Runs in-process; punctuates and capitalizes natively |
+
+Pick one from the menubar under **Speech Model**, or set it explicitly:
+
+```bash
+# environment variable
+VOX_STT_ENGINE=parakeet-v2 vox
+
+# or ~/.vox/config.yaml
+stt_engine: parakeet-v2
+```
+
+The value is either a catalog model ID (`parakeet-v2`, `small.en`) or a bare
+engine name (`whisper`, `parakeet`); a bare engine name selects that engine's
+default model. Anything unrecognized falls back to `base.en` rather than
+failing startup.
+
+Precedence is LaunchDarkly flag (`vox-stt-engine`), then `VOX_STT_ENGINE`,
+then `~/.vox/config.yaml`, then the menubar selection, then `base.en`.
+
+Models download on first use to `~/.local/share/vox/models/`. Whisper models
+already present in `~/.local/share/whisper-cpp/` are detected and reused, so
+upgrading does not re-download them.
+
+If the selected engine fails to start, Vox falls back to `base.en` so
+dictation keeps working, and reports the original failure.
+
+### Benchmarking
+
+Compare engines on your own audio before switching:
+
+```bash
+make bench-libri      # reproducible LibriSpeech subset
+make bench-personal   # your own dictation recordings
+```
+
+See `bench/README.md`.
+
 ## Configuration
 
 All via environment variables:
@@ -128,7 +181,8 @@ All via environment variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `VOX_HOTKEY` | `option+space` | Hotkey to trigger recording. Comma-separated for multiple. |
-| `VOX_WHISPER_MODEL_ID` | `base.en` | Model ID (`tiny.en`, `base.en`, `small.en`, `medium.en`, `large-v3-turbo`) |
+| `VOX_STT_ENGINE` | `base.en` | Engine or model — see [Speech engines](#speech-engines) |
+| `VOX_WHISPER_MODEL_ID` | *(unset)* | Deprecated alias for `VOX_STT_ENGINE`. Used only when `VOX_STT_ENGINE` is unset. |
 | `VOX_HOLD_TO_TALK` | `true` | `true` = hold to record, `false` = toggle on/off |
 | `VOX_LANGUAGE` | *(auto)* | BCP-47 language code (e.g. `en`, `es`) |
 | `VOX_VERBOSE` | `false` | Debug logging |
@@ -176,7 +230,9 @@ Flag precedence: LaunchDarkly > env var > config file > default.
 cmd/vox/main.go          — Entrypoint, event loops, signal/menubar shutdown wiring
 internal/hotkey/          — CGEventTap-based global hotkey (modifier-only, fn, modifier+key)
 internal/audio/           — Mic recording via ffmpeg/sox subprocess
-internal/transcribe/      — Whisper HTTP client (multipart upload, auto endpoint detection)
+internal/transcribe/      — Transcriber interface + Whisper HTTP client (multipart upload, auto endpoint detection)
+internal/parakeet/        — In-process Parakeet recognizer via sherpa-onnx (cgo, CPU-only)
+internal/sttmodel/        — Speech model catalog: download, checksum, extract, install detection
 internal/classify/        — Intent classifier (prefix matching → Dictation/Prompt/Command)
 internal/claude/          — Anthropic Claude Messages API client
 internal/prompt/          — Prompt mode executor (summarize, explain, rewrite, translate)

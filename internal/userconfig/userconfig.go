@@ -21,6 +21,7 @@ type Config struct {
 	StreamingOverlay *bool   `yaml:"streaming_overlay,omitempty"`
 	AIModel          *string `yaml:"ai_model,omitempty"`
 	AnthropicKey     *string `yaml:"anthropic_key,omitempty"`
+	STTEngine        *string `yaml:"stt_engine,omitempty"`
 }
 
 // Path returns the full path to the config file (~/.vox/config.yaml).

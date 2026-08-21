@@ -18,7 +18,7 @@ void uiSetLastText(const char *text);
 void uiSetHotkeyPresets(const char **specs, const char **labels, int count, const char *current);
 void uiSetHotkeyCheckmark(const char *spec);
 void uiSetHotkeyLabel(const char *label);
-void uiSetModelPresets(const char **ids, const char **labels, const int *installed, int count, const char *current);
+void uiSetModelPresets(const char **ids, const char **labels, const char **engines, const char **descriptors, const char **badges, const char **blurbs, const int *installed, int count, const char *current);
 void uiSetModelRemovePresets(const char **ids, const char **labels, const int *removable, int count);
 void uiSetModelCheckmark(const char *id);
 void uiSetModelMenuEnabled(int on);
@@ -70,11 +70,18 @@ type HotkeyPreset struct {
 	Label string
 }
 
-// ModelPreset describes one selectable whisper model in the menubar.
+// ModelPreset describes one selectable speech model in the menubar.
 type ModelPreset struct {
-	ID        string
-	Label     string
-	Installed bool
+	ID    string
+	Label string
+	// Engine is "whisper" or "parakeet". Consecutive presets sharing an
+	// engine render as one section; the submenu inserts a header each time
+	// the value changes, so callers must keep engines contiguous.
+	Engine     string
+	Descriptor string // secondary line: "Fast · Good accuracy · 142 MB"
+	Badge      string // right-aligned tag: "Default", "Recommended", "Multilingual", etc.
+	Blurb      string // tooltip on hover
+	Installed  bool
 }
 
 // ModelRemovePreset is one installed model listed under Manage Downloaded Models.
@@ -161,7 +168,7 @@ func OnShowLog() <-chan struct{} { return showLogCh }
 func OnHotkeyChange() <-chan string { return hotkeyCh }
 
 // OnModelChange returns a channel that receives the model ID (e.g. "base.en")
-// picked from the "Whisper Model" submenu.
+// picked from the "Speech Model" submenu.
 func OnModelChange() <-chan string { return modelCh }
 
 // OnModelDelete returns a channel that receives a model ID after the user
@@ -211,23 +218,37 @@ func SetHotkeyLabel(label string) {
 	C.uiSetHotkeyLabel(c)
 }
 
-// SetModelPresets populates the "Whisper Model" submenu.
+// SetModelPresets populates the "Speech Model" submenu. Presets are rendered
+// in the order given, with a section header inserted wherever Engine changes,
+// so callers should pass models grouped by engine.
 func SetModelPresets(presets []ModelPreset, current string) {
 	if len(presets) == 0 {
 		return
 	}
 	ids := make([]*C.char, len(presets))
 	labels := make([]*C.char, len(presets))
+	engines := make([]*C.char, len(presets))
+	descriptors := make([]*C.char, len(presets))
+	badges := make([]*C.char, len(presets))
+	blurbs := make([]*C.char, len(presets))
 	installed := make([]C.int, len(presets))
 	for i, p := range presets {
 		ids[i] = C.CString(p.ID)
 		labels[i] = C.CString(p.Label)
+		engines[i] = C.CString(p.Engine)
+		descriptors[i] = C.CString(p.Descriptor)
+		badges[i] = C.CString(p.Badge)
+		blurbs[i] = C.CString(p.Blurb)
 		installed[i] = boolToC(p.Installed)
 	}
 	defer func() {
 		for i := range ids {
 			C.free(unsafe.Pointer(ids[i]))
 			C.free(unsafe.Pointer(labels[i]))
+			C.free(unsafe.Pointer(engines[i]))
+			C.free(unsafe.Pointer(descriptors[i]))
+			C.free(unsafe.Pointer(badges[i]))
+			C.free(unsafe.Pointer(blurbs[i]))
 		}
 	}()
 	curr := C.CString(current)
@@ -235,6 +256,10 @@ func SetModelPresets(presets []ModelPreset, current string) {
 	C.uiSetModelPresets(
 		(**C.char)(unsafe.Pointer(&ids[0])),
 		(**C.char)(unsafe.Pointer(&labels[0])),
+		(**C.char)(unsafe.Pointer(&engines[0])),
+		(**C.char)(unsafe.Pointer(&descriptors[0])),
+		(**C.char)(unsafe.Pointer(&badges[0])),
+		(**C.char)(unsafe.Pointer(&blurbs[0])),
 		(*C.int)(unsafe.Pointer(&installed[0])),
 		C.int(len(presets)),
 		curr,
@@ -269,7 +294,7 @@ func SetModelRemovePresets(presets []ModelRemovePreset) {
 	)
 }
 
-// SetModelCheckmark moves the checkmark in the "Whisper Model" submenu.
+// SetModelCheckmark moves the checkmark in the "Speech Model" submenu.
 func SetModelCheckmark(id string) {
 	c := C.CString(id)
 	defer C.free(unsafe.Pointer(c))

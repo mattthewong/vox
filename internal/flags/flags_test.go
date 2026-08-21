@@ -98,6 +98,59 @@ func TestAIModelPrecedence(t *testing.T) {
 	}
 }
 
+func TestSTTEnginePrecedence(t *testing.T) {
+	t.Run("empty when nothing set", func(t *testing.T) {
+		// "" means "no opinion at this layer", so config.Load can fall
+		// through to prefs.json and then the catalog default. Returning
+		// "whisper" here would silently override a menubar selection.
+		t.Setenv("VOX_STT_ENGINE", "")
+		c := &Client{}
+		if got := c.STTEngine(); got != "" {
+			t.Errorf("got %q, want empty string", got)
+		}
+	})
+
+	t.Run("config file over empty", func(t *testing.T) {
+		t.Setenv("VOX_STT_ENGINE", "")
+		engine := "parakeet-v2"
+		c := &Client{userCfg: userconfig.Config{STTEngine: &engine}}
+		if got := c.STTEngine(); got != "parakeet-v2" {
+			t.Errorf("got %q, want parakeet-v2", got)
+		}
+	})
+
+	t.Run("env over config file", func(t *testing.T) {
+		engine := "parakeet-v2"
+		t.Setenv("VOX_STT_ENGINE", "parakeet-v3")
+		c := &Client{userCfg: userconfig.Config{STTEngine: &engine}}
+		if got := c.STTEngine(); got != "parakeet-v3" {
+			t.Errorf("got %q, want parakeet-v3", got)
+		}
+	})
+
+	t.Run("LD flag over env", func(t *testing.T) {
+		t.Setenv("VOX_STT_ENGINE", "parakeet-v3")
+		c := &Client{
+			ld:  &mockLDClient{stringVal: "whisper", stringDetail: successDetail()},
+			ctx: ldcontext.New("test"),
+		}
+		if got := c.STTEngine(); got != "whisper" {
+			t.Errorf("got %q, want whisper", got)
+		}
+	})
+
+	t.Run("LD error falls through to env", func(t *testing.T) {
+		t.Setenv("VOX_STT_ENGINE", "parakeet-v3")
+		c := &Client{
+			ld:  &mockLDClient{stringVal: "", stringDetail: errorDetail()},
+			ctx: ldcontext.New("test"),
+		}
+		if got := c.STTEngine(); got != "parakeet-v3" {
+			t.Errorf("got %q, want parakeet-v3", got)
+		}
+	})
+}
+
 func TestAnthropicKeyPrecedence(t *testing.T) {
 	// Clear any real ANTHROPIC_API_KEY so it doesn't interfere.
 	t.Setenv("ANTHROPIC_API_KEY", "")
@@ -197,6 +250,7 @@ func TestNilClientGraceful(t *testing.T) {
 	_ = c.ContextAware()
 	_ = c.StreamingOverlay()
 	_ = c.AIModel()
+	_ = c.STTEngine()
 	_, _ = c.AnthropicKey()
 	c.Close() // should not panic
 }
@@ -250,6 +304,7 @@ func TestFlagKeyConstants(t *testing.T) {
 		KeyStreamingOverlay,
 		KeyAIModel,
 		KeyAnthropicKey,
+		KeySTTEngine,
 	}
 	for _, k := range keys {
 		if k == "" {

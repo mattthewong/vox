@@ -9,3 +9,14 @@ bin/
 .DS_Store
 vendor/
 logs/
+
+# A bare `go build` with no -o drops a 12 MB binary here. Worth ignoring
+# rather than committing by accident: running it also registers a second
+# Accessibility (TCC) identity separate from Vox.app's, since it has no
+# bundle identifier.
+/vox
+
+# Benchmark corpora (large audio, personal recordings)
+bench/libri/
+bench/personal/
+bench/results-*.md
