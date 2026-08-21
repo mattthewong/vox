@@ -25,11 +25,6 @@ const (
 	sampleRate = 16000
 	featureDim = 80
 
-	// defaultIdleTimeout is how long an initialized recognizer is kept in
-	// memory after its last use. The ONNX runtime holds roughly a gigabyte
-	// resident, which is worth releasing between dictation sessions.
-	defaultIdleTimeout = 5 * time.Minute
-
 	defaultNumThreads = 2
 )
 
@@ -42,9 +37,6 @@ type Config struct {
 	// NumThreads for ONNX inference. Defaults to 2.
 	NumThreads int
 
-	// IdleTimeout overrides how long the loaded model is retained.
-	IdleTimeout time.Duration
-
 	// Logger receives load and unload events. Optional; defaults to a
 	// discard logger.
 	Logger *slog.Logger
@@ -54,18 +46,25 @@ type Config struct {
 // transcribe.Transcriber.
 //
 // The underlying sherpa-onnx recognizer is created lazily on first use and
-// released after IdleTimeout. Transcribe is safe for concurrent use, though
-// calls are serialized.
+// retained for the lifetime of this Recognizer. It is released only when
+// Close is called (typically on engine switch or app shutdown).
+//
+// An earlier design released the recognizer after an idle timeout to reclaim
+// the ~1.7 GiB of RSS. Profiling showed that onnxruntime's C allocator does
+// not return freed pages to the OS: each destroy/recreate cycle left ~500 MB
+// of unreclaimable RSS, and repeated cycles grew monotonically. Keeping the
+// session alive avoids this leak entirely; the 1.7 GiB is reclaimed by the
+// OS when the engine is switched or vox exits.
+//
+// Transcribe is safe for concurrent use, though calls are serialized.
 type Recognizer struct {
-	modelDir    string
-	numThreads  int
-	idleTimeout time.Duration
-	log         *slog.Logger
+	modelDir   string
+	numThreads int
+	log        *slog.Logger
 
-	mu        sync.Mutex
-	impl      *recognizerHandle
-	idleTimer *time.Timer
-	closed    bool
+	mu     sync.Mutex
+	impl   *recognizerHandle
+	closed bool
 }
 
 // New creates a Recognizer. The model is not loaded until the first
@@ -75,19 +74,14 @@ func New(cfg Config) *Recognizer {
 	if threads <= 0 {
 		threads = defaultNumThreads
 	}
-	idle := cfg.IdleTimeout
-	if idle <= 0 {
-		idle = defaultIdleTimeout
-	}
 	log := cfg.Logger
 	if log == nil {
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	return &Recognizer{
-		modelDir:    cfg.ModelDir,
-		numThreads:  threads,
-		idleTimeout: idle,
-		log:         log,
+		modelDir:   cfg.ModelDir,
+		numThreads: threads,
+		log:        log,
 	}
 }
 
@@ -130,13 +124,7 @@ func (r *Recognizer) Transcribe(ctx context.Context, wavData []byte, _ transcrib
 		return "", err
 	}
 
-	text, err := r.impl.decode(samples, sampleRate)
-	if err != nil {
-		return "", err
-	}
-
-	r.resetIdleTimerLocked()
-	return text, nil
+	return r.impl.decode(samples, sampleRate)
 }
 
 // ensureLoadedLocked creates the sherpa recognizer if it is not resident.
@@ -164,43 +152,16 @@ func (r *Recognizer) ensureLoadedLocked() error {
 	return nil
 }
 
-// resetIdleTimerLocked schedules model release. Caller must hold r.mu.
-func (r *Recognizer) resetIdleTimerLocked() {
-	if r.idleTimer != nil {
-		r.idleTimer.Stop()
-	}
-	r.idleTimer = time.AfterFunc(r.idleTimeout, r.releaseIfIdle)
-}
-
-// releaseIfIdle frees the loaded model to return memory to the OS.
-func (r *Recognizer) releaseIfIdle() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.unloadLocked()
-}
-
-// unloadLocked frees the sherpa recognizer. Caller must hold r.mu.
-func (r *Recognizer) unloadLocked() {
-	if r.impl != nil {
-		r.impl.close()
-		r.impl = nil
-		// Worth logging: the next transcription pays a cold-start penalty of
-		// roughly two seconds, and without this line that looks like an
-		// unexplained latency spike when debugging.
-		r.log.Debug("parakeet model released after idle timeout",
-			"idle_timeout", r.idleTimeout)
-	}
-	if r.idleTimer != nil {
-		r.idleTimer.Stop()
-		r.idleTimer = nil
-	}
-}
-
 // Close releases the model and prevents further use. It is safe to call
-// multiple times.
+// multiple times. This is the only path that destroys the ONNX session;
+// see the Recognizer doc comment for why idle unloading was removed.
 func (r *Recognizer) Close() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.unloadLocked()
+	if r.impl != nil {
+		r.impl.close()
+		r.impl = nil
+		r.log.Debug("parakeet model released")
+	}
 	r.closed = true
 }

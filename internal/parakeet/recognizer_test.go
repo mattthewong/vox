@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"vox/internal/transcribe"
 )
@@ -46,14 +45,14 @@ func TestTranscribeRejectsMissingModel(t *testing.T) {
 	}
 }
 
-func TestIdleTimeoutDefaults(t *testing.T) {
+func TestNumThreadsDefaults(t *testing.T) {
 	r := New(Config{ModelDir: "/tmp/x"})
-	if r.idleTimeout != defaultIdleTimeout {
-		t.Errorf("idleTimeout = %v, want %v", r.idleTimeout, defaultIdleTimeout)
+	if r.numThreads != defaultNumThreads {
+		t.Errorf("numThreads = %d, want %d", r.numThreads, defaultNumThreads)
 	}
-	r2 := New(Config{ModelDir: "/tmp/x", IdleTimeout: time.Minute})
-	if r2.idleTimeout != time.Minute {
-		t.Errorf("idleTimeout = %v, want 1m", r2.idleTimeout)
+	r2 := New(Config{ModelDir: "/tmp/x", NumThreads: 4})
+	if r2.numThreads != 4 {
+		t.Errorf("numThreads = %d, want 4", r2.numThreads)
 	}
 }
 
@@ -75,32 +74,6 @@ func TestTranscribeRespectsContextCancellation(t *testing.T) {
 	}
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v, want context.Canceled", err)
-	}
-}
-
-func TestIdleTimerReleasesImpl(t *testing.T) {
-	r := New(Config{
-		ModelDir:    t.TempDir(),
-		IdleTimeout: 50 * time.Millisecond, // very short for testing
-	})
-	defer r.Close()
-
-	// Simulate loading an impl by setting the field directly (we can't
-	// actually load sherpa in unit tests without the dylib). This tests
-	// the timer mechanism, not the full model load.
-	r.mu.Lock()
-	r.impl = &recognizerHandle{} // non-nil sentinel
-	r.resetIdleTimerLocked()
-	r.mu.Unlock()
-
-	// Wait for the idle timer to fire (with margin).
-	time.Sleep(200 * time.Millisecond)
-
-	r.mu.Lock()
-	released := r.impl == nil
-	r.mu.Unlock()
-	if !released {
-		t.Error("impl should have been released by idle timer")
 	}
 }
 
