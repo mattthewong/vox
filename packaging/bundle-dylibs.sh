@@ -27,6 +27,8 @@ BINARY="$MACOS_DIR/vox"
 [ -x "$BINARY" ] || { echo "no binary at $BINARY" >&2; exit 1; }
 
 # Locate the dylibs via the module cache rather than hardcoding a version.
+# Download first so go list can resolve the directory on a fresh clone.
+go mod download github.com/k2-fsa/sherpa-onnx-go-macos >/dev/null
 MODDIR="$(go list -m -f '{{.Dir}}' github.com/k2-fsa/sherpa-onnx-go-macos)"
 LIBDIR="$MODDIR/lib/aarch64-apple-darwin"
 [ -d "$LIBDIR" ] || { echo "no dylib dir at $LIBDIR" >&2; exit 1; }
