@@ -21,6 +21,10 @@ static NSMenuItem    *modeHoldItem      = nil;
 static NSMenuItem    *modeToggleItem    = nil;
 static NSMenuItem    *soundsItem        = nil;
 static NSMenuItem    *autoPasteItem     = nil;
+static NSMenuItem    *aiPostProcessItem = nil;
+static NSMenuItem    *promptModeItem    = nil;
+static NSMenuItem    *voiceCommandsItem = nil;
+static NSMenuItem    *contextAwareItem  = nil;
 
 // Tracks whether the user has paused vox via the menu. We keep it in C
 // because applySymbol consults it on every state transition to render a
@@ -39,6 +43,10 @@ static BOOL isPaused = NO;
 - (void)modelClicked:(id)sender;
 - (void)soundsClicked:(id)sender;
 - (void)autoPasteClicked:(id)sender;
+- (void)aiPostProcessClicked:(id)sender;
+- (void)promptModeClicked:(id)sender;
+- (void)voiceCommandsClicked:(id)sender;
+- (void)contextAwareClicked:(id)sender;
 - (void)modelRemoveClicked:(id)sender;
 @end
 
@@ -84,6 +92,18 @@ static BOOL isPaused = NO;
 - (void)autoPasteClicked:(id)sender {
     onAutoPasteToggled(autoPasteItem.state == NSControlStateValueOn ? 0 : 1);
 }
+- (void)aiPostProcessClicked:(id)sender {
+    onAIPostProcessToggled(aiPostProcessItem.state == NSControlStateValueOn ? 0 : 1);
+}
+- (void)promptModeClicked:(id)sender {
+    onPromptModeToggled(promptModeItem.state == NSControlStateValueOn ? 0 : 1);
+}
+- (void)voiceCommandsClicked:(id)sender {
+    onVoiceCommandsToggled(voiceCommandsItem.state == NSControlStateValueOn ? 0 : 1);
+}
+- (void)contextAwareClicked:(id)sender {
+    onContextAwareToggled(contextAwareItem.state == NSControlStateValueOn ? 0 : 1);
+}
 // Confirmed removal after NSAlert — representedObject is the model ID.
 - (void)modelRemoveClicked:(id)sender {
     NSMenuItem *item = (NSMenuItem *)sender;
@@ -92,7 +112,7 @@ static BOOL isPaused = NO;
 
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"Remove downloaded model?";
-    alert.informativeText = [NSString stringWithFormat:@"Delete “%@” from disk to free space. You can download it again later from this menu.", item.title];
+    alert.informativeText = [NSString stringWithFormat:@"Delete \u201c%@\u201d from disk to free space. You can download it again later from this menu.", item.title];
     [alert addButtonWithTitle:@"Remove"];
     [alert addButtonWithTitle:@"Cancel"];
     alert.alertStyle = NSAlertStyleWarning;
@@ -244,6 +264,39 @@ void uiInit(const char *hotkeyLabel) {
                                             keyEquivalent:@""];
         [autoPasteItem setTarget:appDelegate];
         [statusMenu addItem:autoPasteItem];
+
+        [statusMenu addItem:[NSMenuItem separatorItem]];
+
+        // --- AI Features ---
+        NSMenuItem *aiHeader = [[[NSMenuItem alloc] initWithTitle:@"AI Features"
+                                                            action:nil
+                                                     keyEquivalent:@""] autorelease];
+        [aiHeader setEnabled:NO];
+        [statusMenu addItem:aiHeader];
+
+        aiPostProcessItem = [[NSMenuItem alloc] initWithTitle:@"AI post-processing"
+                                                        action:@selector(aiPostProcessClicked:)
+                                                 keyEquivalent:@""];
+        [aiPostProcessItem setTarget:appDelegate];
+        [statusMenu addItem:aiPostProcessItem];
+
+        promptModeItem = [[NSMenuItem alloc] initWithTitle:@"Prompt mode"
+                                                     action:@selector(promptModeClicked:)
+                                              keyEquivalent:@""];
+        [promptModeItem setTarget:appDelegate];
+        [statusMenu addItem:promptModeItem];
+
+        voiceCommandsItem = [[NSMenuItem alloc] initWithTitle:@"Voice commands"
+                                                        action:@selector(voiceCommandsClicked:)
+                                                 keyEquivalent:@""];
+        [voiceCommandsItem setTarget:appDelegate];
+        [statusMenu addItem:voiceCommandsItem];
+
+        contextAwareItem = [[NSMenuItem alloc] initWithTitle:@"Context-aware formatting"
+                                                       action:@selector(contextAwareClicked:)
+                                                keyEquivalent:@""];
+        [contextAwareItem setTarget:appDelegate];
+        [statusMenu addItem:contextAwareItem];
 
         [statusMenu addItem:[NSMenuItem separatorItem]];
 
@@ -611,6 +664,32 @@ void uiSetSoundsEnabled(int on) {
 void uiSetAutoPaste(int on) {
     dispatch_async(dispatch_get_main_queue(), ^{
         [autoPasteItem setState:on ? NSControlStateValueOn : NSControlStateValueOff];
+    });
+}
+
+// MARK: - AI Feature setters
+
+void uiSetAIPostProcess(int on) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [aiPostProcessItem setState:on ? NSControlStateValueOn : NSControlStateValueOff];
+    });
+}
+
+void uiSetPromptMode(int on) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [promptModeItem setState:on ? NSControlStateValueOn : NSControlStateValueOff];
+    });
+}
+
+void uiSetVoiceCommands(int on) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [voiceCommandsItem setState:on ? NSControlStateValueOn : NSControlStateValueOff];
+    });
+}
+
+void uiSetContextAware(int on) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [contextAwareItem setState:on ? NSControlStateValueOn : NSControlStateValueOff];
     });
 }
 

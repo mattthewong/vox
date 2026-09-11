@@ -20,6 +20,10 @@ type Prefs struct {
 	HoldToTalk    *bool  `json:"hold_to_talk,omitempty"`
 	SoundsEnabled *bool  `json:"sounds_enabled,omitempty"`
 	AutoPaste     *bool  `json:"auto_paste,omitempty"`
+	AIPostProcess *bool  `json:"ai_postprocess,omitempty"`
+	PromptMode    *bool  `json:"prompt_mode,omitempty"`
+	VoiceCommands *bool  `json:"voice_commands,omitempty"`
+	ContextAware  *bool  `json:"context_aware,omitempty"`
 	Model         string `json:"model,omitempty"`
 }
 

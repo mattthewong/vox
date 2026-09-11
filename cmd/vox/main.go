@@ -64,6 +64,10 @@ type runtimeSettings struct {
 	HoldToTalk    atomic.Bool
 	SoundsEnabled atomic.Bool
 	AutoPaste     atomic.Bool
+	AIPostProcess atomic.Bool
+	PromptMode    atomic.Bool
+	VoiceCommands atomic.Bool
+	ContextAware  atomic.Bool
 }
 
 var settings runtimeSettings
@@ -285,6 +289,10 @@ func run() {
 	settings.HoldToTalk.Store(cfg.HoldToTalk)
 	settings.SoundsEnabled.Store(cfg.SoundsEnabled)
 	settings.AutoPaste.Store(cfg.AutoPaste)
+	settings.AIPostProcess.Store(flagClient.AIPostProcess())
+	settings.PromptMode.Store(flagClient.PromptMode())
+	settings.VoiceCommands.Store(flagClient.VoiceCommands())
+	settings.ContextAware.Store(flagClient.ContextAware())
 
 	// Initialize the menubar UI on the main goroutine. Must happen before the
 	// hotkey listener registers on the main run loop, because uiInit creates
@@ -297,6 +305,10 @@ func run() {
 	ui.SetMode(cfg.HoldToTalk)
 	ui.SetSoundsEnabled(cfg.SoundsEnabled)
 	ui.SetAutoPaste(cfg.AutoPaste)
+	ui.SetAIPostProcess(settings.AIPostProcess.Load())
+	ui.SetPromptMode(settings.PromptMode.Load())
+	ui.SetVoiceCommands(settings.VoiceCommands.Load())
+	ui.SetContextAware(settings.ContextAware.Load())
 
 	// Create hotkey listener and register the CGEventTap source on the main
 	// run loop. Non-blocking: events arrive once we call ui.Run() below.
@@ -310,16 +322,16 @@ func run() {
 	fmt.Printf("Hotkey: %s (%s mode)\n", hotkeyLabel, modeLabel(cfg.HoldToTalk))
 	if claudeClient != nil {
 		var features []string
-		if flagClient.AIPostProcess() {
+		if settings.AIPostProcess.Load() {
 			features = append(features, "AI post-processing")
 		}
-		if flagClient.PromptMode() {
+		if settings.PromptMode.Load() {
 			features = append(features, "prompt mode")
 		}
-		if flagClient.VoiceCommands() {
+		if settings.VoiceCommands.Load() {
 			features = append(features, "voice commands")
 		}
-		if flagClient.ContextAware() {
+		if settings.ContextAware.Load() {
 			features = append(features, "context-aware")
 		}
 		if len(features) > 0 {
@@ -334,10 +346,10 @@ func run() {
 	pipe := pipeline.New(
 		transcribeStage(engines, transcribeOpts),
 		filterBlankStage(),
-		classifyStage(classifier, flagClient),
-		postProcessStage(claudeClient, flagClient),
-		promptModeStage(promptExec, flagClient),
-		commandStage(cmdRegistry, flagClient),
+		classifyStage(classifier),
+		postProcessStage(claudeClient),
+		promptModeStage(promptExec),
+		commandStage(cmdRegistry),
 		injectStage(),
 	)
 
@@ -728,6 +740,22 @@ func settingsWatcher(ctx context.Context, logger *slog.Logger, recorder *audio.R
 			settings.AutoPaste.Store(on)
 			ui.SetAutoPaste(on)
 			save("auto_paste", func(p *config.Prefs) { p.AutoPaste = config.BoolPtr(on) })
+		case on := <-ui.OnAIPostProcessToggle():
+			settings.AIPostProcess.Store(on)
+			ui.SetAIPostProcess(on)
+			save("ai_postprocess", func(p *config.Prefs) { p.AIPostProcess = config.BoolPtr(on) })
+		case on := <-ui.OnPromptModeToggle():
+			settings.PromptMode.Store(on)
+			ui.SetPromptMode(on)
+			save("prompt_mode", func(p *config.Prefs) { p.PromptMode = config.BoolPtr(on) })
+		case on := <-ui.OnVoiceCommandsToggle():
+			settings.VoiceCommands.Store(on)
+			ui.SetVoiceCommands(on)
+			save("voice_commands", func(p *config.Prefs) { p.VoiceCommands = config.BoolPtr(on) })
+		case on := <-ui.OnContextAwareToggle():
+			settings.ContextAware.Store(on)
+			ui.SetContextAware(on)
+			save("context_aware", func(p *config.Prefs) { p.ContextAware = config.BoolPtr(on) })
 		}
 	}
 }
@@ -1009,16 +1037,16 @@ func injectStage() pipeline.Stage {
 }
 
 // classifyStage determines if speech is dictation, a prompt, or a command.
-func classifyStage(cl *classify.Classifier, fc *flags.Client) pipeline.Stage {
+func classifyStage(cl *classify.Classifier) pipeline.Stage {
 	return func(_ context.Context, r *pipeline.Result) error {
 		// Only classify if prompt mode or voice commands are enabled.
-		if !fc.PromptMode() && !fc.VoiceCommands() {
+		if !settings.PromptMode.Load() && !settings.VoiceCommands.Load() {
 			return nil
 		}
 		intent := cl.Classify(r.RawText)
 		switch intent.Mode {
 		case classify.ModePrompt:
-			if fc.PromptMode() {
+			if settings.PromptMode.Load() {
 				r.Mode = pipeline.ModePrompt
 				r.Metadata = map[string]string{
 					"action":  intent.Action,
@@ -1027,7 +1055,7 @@ func classifyStage(cl *classify.Classifier, fc *flags.Client) pipeline.Stage {
 				}
 			}
 		case classify.ModeCommand:
-			if fc.VoiceCommands() {
+			if settings.VoiceCommands.Load() {
 				r.Mode = pipeline.ModeCommand
 				r.Metadata = map[string]string{
 					"action": intent.Action,
@@ -1040,14 +1068,14 @@ func classifyStage(cl *classify.Classifier, fc *flags.Client) pipeline.Stage {
 }
 
 // postProcessStage sends dictation text through Claude for grammar/punctuation cleanup.
-func postProcessStage(cc *claude.Client, fc *flags.Client) pipeline.Stage {
+func postProcessStage(cc *claude.Client) pipeline.Stage {
 	return func(ctx context.Context, r *pipeline.Result) error {
-		if cc == nil || !fc.AIPostProcess() || r.Mode != pipeline.ModeDictation {
+		if cc == nil || !settings.AIPostProcess.Load() || r.Mode != pipeline.ModeDictation {
 			return nil
 		}
 
 		systemPrompt := claude.PostProcessSystemPrompt
-		if fc.ContextAware() {
+		if settings.ContextAware.Load() {
 			app := appctx.Detect()
 			systemPrompt = format.SystemPromptWithHint(systemPrompt, app.Category())
 		}
@@ -1065,9 +1093,9 @@ func postProcessStage(cc *claude.Client, fc *flags.Client) pipeline.Stage {
 }
 
 // promptModeStage handles prompt-mode actions (summarize, explain, rewrite, etc.).
-func promptModeStage(exec *prompt.Executor, fc *flags.Client) pipeline.Stage {
+func promptModeStage(exec *prompt.Executor) pipeline.Stage {
 	return func(ctx context.Context, r *pipeline.Result) error {
-		if r.Mode != pipeline.ModePrompt || exec == nil || !fc.PromptMode() {
+		if r.Mode != pipeline.ModePrompt || exec == nil || !settings.PromptMode.Load() {
 			return nil
 		}
 		action := r.Metadata["action"]
@@ -1085,9 +1113,9 @@ func promptModeStage(exec *prompt.Executor, fc *flags.Client) pipeline.Stage {
 }
 
 // commandStage executes voice commands (create PR, query flag, etc.).
-func commandStage(reg *commands.Registry, fc *flags.Client) pipeline.Stage {
+func commandStage(reg *commands.Registry) pipeline.Stage {
 	return func(ctx context.Context, r *pipeline.Result) error {
-		if r.Mode != pipeline.ModeCommand || !fc.VoiceCommands() {
+		if r.Mode != pipeline.ModeCommand || !settings.VoiceCommands.Load() {
 			return nil
 		}
 		action := r.Metadata["action"]
