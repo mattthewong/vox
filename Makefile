@@ -1,4 +1,4 @@
-.PHONY: build app test test-short test-race test-parakeet voxbench bench-libri bench-personal lint run setup start stop status clean install deps fmt ci check-fmt
+.PHONY: build app test test-short test-race test-parakeet voxbench bench-libri bench-personal lint run setup start stop status doctor doctor-fix clean install deps fmt ci check-fmt
 
 export CGO_LDFLAGS := -Wl,-no_warn_duplicate_libraries
 
@@ -131,6 +131,25 @@ status:
 	else \
 		echo "vox: not running"; \
 	fi
+
+# doctor is the read-only "why isn't Vox working?" check. It reports the
+# process/pidfile state, the TCC grants for the *current* build's signature,
+# and — the part System Settings can't show — whether another app that is
+# switched OFF in System Settings > Menu Bar has captured Vox's status item.
+# That last case happens when Vox is launched as a child of a terminal, IDE,
+# or agent host. Reading the ledger needs Full Disk Access on the terminal.
+#
+# Deliberately does NOT depend on `app`: rebuilding re-signs the bundle, which
+# changes the signature the permission checks are keyed on. A doctor must not
+# alter the patient. If there is no bundle yet, build one first.
+doctor:
+	@[ -x "$(APP_BUNDLE)/Contents/MacOS/vox" ] || $(MAKE) app
+	@"$(APP_BUNDLE)/Contents/MacOS/vox" doctor
+
+# doctor-fix removes stale foreign references to Vox from Control Center's
+# ledger (backs up first). Run only when `make doctor` says BLOCKED.
+doctor-fix:
+	@python3 packaging/fix-menubar-ledger.py $(APP_BUNDLE_ID)
 
 clean:
 	rm -rf bin/

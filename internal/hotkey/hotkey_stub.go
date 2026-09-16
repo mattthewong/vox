@@ -22,6 +22,9 @@ func NewListener(_ []Trigger) *Listener {
 // CheckAccessibility always returns true on non-darwin platforms.
 func CheckAccessibility() bool { return true }
 
+// AccessibilityGranted always returns true on non-darwin platforms.
+func AccessibilityGranted() bool { return true }
+
 // Start returns an error on non-darwin platforms.
 // It closes the keydown/keyup channels so any goroutine blocked on them
 // unblocks cleanly instead of leaking.

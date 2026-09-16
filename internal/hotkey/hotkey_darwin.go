@@ -78,6 +78,13 @@ func CheckAccessibility() bool {
 	return C.checkAccessibility(1) == 1
 }
 
+// AccessibilityGranted reports whether the process already has Accessibility
+// permission. Unlike CheckAccessibility it never shows a prompt, so it is
+// safe to call from read-only diagnostics.
+func AccessibilityGranted() bool {
+	return C.checkAccessibility(0) == 1
+}
+
 // Start registers the CGEventTap on the main run loop and returns
 // immediately. The caller is responsible for running the main run loop
 // afterward (the ui package does this via [NSApp run]).

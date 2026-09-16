@@ -8,6 +8,7 @@ require (
 	github.com/launchdarkly/go-server-sdk/v7 v7.14.7
 	golang.design/x/mainthread v0.3.0
 	gopkg.in/yaml.v3 v3.0.1
+	howett.net/plist v1.0.1
 )
 
 require (

@@ -17,3 +17,10 @@ int requestMicrophoneAccess(void) {
     }
     return 0;
 }
+
+// microphoneAuthorized reports the current status without ever prompting.
+// Diagnostics must not trigger a permission dialog.
+int microphoneAuthorized(void) {
+    return [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio]
+        == AVAuthorizationStatusAuthorized ? 1 : 0;
+}

@@ -43,8 +43,20 @@ func TestStubCheckAccessibilityReturnsTrue(t *testing.T) {
 	}
 }
 
+func TestStubAccessibilityGrantedReturnsTrue(t *testing.T) {
+	if !AccessibilityGranted() {
+		t.Error("stub AccessibilityGranted() must return true")
+	}
+}
+
 func TestStubRequestMicrophoneAccessReturnsTrue(t *testing.T) {
 	if !RequestMicrophoneAccess() {
 		t.Error("stub RequestMicrophoneAccess() must return true")
+	}
+}
+
+func TestStubMicrophoneAuthorizedReturnsTrue(t *testing.T) {
+	if !MicrophoneAuthorized() {
+		t.Error("stub MicrophoneAuthorized() must return true")
 	}
 }
