@@ -161,8 +161,10 @@ func run() {
 	// Check Accessibility permission.
 	if !hotkey.CheckAccessibility() {
 		fmt.Fprintln(os.Stderr, "Error: Accessibility permission required.")
-		fmt.Fprintln(os.Stderr, "  Grant it in: System Settings > Privacy & Security > Accessibility")
-		fmt.Fprintln(os.Stderr, "  Add your terminal app (Terminal, iTerm2, etc.) to the list.")
+		fmt.Fprintln(os.Stderr, "  Approve the prompt, or grant Vox in:")
+		fmt.Fprintln(os.Stderr, "  System Settings > Privacy & Security > Accessibility")
+		fmt.Fprintln(os.Stderr, "  If Vox is already listed there, the grant belongs to an older")
+		fmt.Fprintln(os.Stderr, "  build: run `make doctor` to confirm, then re-grant it.")
 		os.Exit(1)
 	}
 

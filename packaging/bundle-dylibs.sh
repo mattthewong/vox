@@ -18,8 +18,11 @@
 # inner dylibs first, then the enclosing bundle. Nothing may sign before it.
 set -euo pipefail
 
-APP="${1:?usage: bundle-dylibs.sh <path-to-.app> [bundle-id]}"
+APP="${1:?usage: bundle-dylibs.sh <path-to-.app> [bundle-id] [signing-identity]}"
 BUNDLE_ID="${2:-}"
+# "-" is ad-hoc. Callers that want TCC grants to outlive a rebuild pass a
+# certificate name instead; see packaging/signing-identity.sh.
+SIGN_IDENTITY="${3:--}"
 MACOS_DIR="$APP/Contents/MacOS"
 FRAMEWORKS="$APP/Contents/Frameworks"
 BINARY="$MACOS_DIR/vox"
@@ -84,14 +87,15 @@ done
 # Sign inner libraries before the enclosing bundle, or the outer signature
 # is invalidated by the later inner ones.
 for lib in "${LIBS[@]}"; do
-	codesign --force --sign - "$FRAMEWORKS/$lib"
+	codesign --force --sign "$SIGN_IDENTITY" "$FRAMEWORKS/$lib"
 done
 if [ -n "$BUNDLE_ID" ]; then
-	# Keep the identifier stable so macOS TCC preserves Accessibility and
-	# Microphone grants across rebuilds.
-	codesign --force --sign - --identifier "$BUNDLE_ID" "$APP"
+	# The identifier alone does not preserve TCC grants. Under ad-hoc signing
+	# the designated requirement is the code hash, which every rebuild
+	# changes; only a certificate makes the requirement outlive a rebuild.
+	codesign --force --sign "$SIGN_IDENTITY" --identifier "$BUNDLE_ID" "$APP"
 else
-	codesign --force --sign - "$APP"
+	codesign --force --sign "$SIGN_IDENTITY" "$APP"
 fi
 
 echo "bundled: ${LIBS[*]}"
