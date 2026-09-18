@@ -133,6 +133,12 @@ requested it, and a certificate keeps that signature stable; ad-hoc signing
 would bind the grant to the code hash, which every rebuild changes — leaving
 Vox listed as enabled in System Settings while macOS quietly ignores it.
 
+On a machine with no login keychain or no `/usr/bin/openssl`, the certificate
+cannot be created and `make app` falls back to ad-hoc signing — it says which
+one it used, and in the ad-hoc case each rebuild does cost a fresh permission
+grant. Set `VOX_SIGN_IDENTITY_NAME` to sign under a different name, such as an
+existing Developer ID.
+
 If a grant ever does go stale, `make doctor` says so and prints the fix.
 Note that a permission check made by Vox is credited to whatever launched it,
 so `make start` from a terminal that holds Accessibility succeeds even when
