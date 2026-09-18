@@ -43,10 +43,12 @@ const (
 	grantActive
 )
 
-// accessibilityGrant reports what macOS recorded for bundleID's Accessibility
-// permission and whether appPath still satisfies the signature that grant is
-// bound to.
-func accessibilityGrant(appPath, id string) (appGrantState, error) {
+// recordedAccessibilityGrant reports what macOS has on record for id's
+// Accessibility permission and whether appPath still satisfies the signature
+// that grant is bound to. Distinct from hotkey.AccessibilityGranted, which
+// asks what the running process may do right now and answers for whichever
+// app macOS credits with the check.
+func recordedAccessibilityGrant(appPath, id string) (appGrantState, error) {
 	authValue, requirement, err := tccAccessibilityRecord(tccDatabasePath(), id)
 	if err != nil {
 		return grantUnreadable, err
@@ -194,6 +196,7 @@ func appNameOfExecutable(path string) (string, bool) {
 	return "", false
 }
 
+// parentPID reads a process's parent from ps.
 func parentPID(pid int) (int, bool) {
 	out, err := exec.Command("ps", "-o", "ppid=", "-p", strconv.Itoa(pid)).Output()
 	if err != nil {
@@ -206,6 +209,7 @@ func parentPID(pid int) (int, bool) {
 	return ppid, true
 }
 
+// executablePath reads the path a process was started from.
 func executablePath(pid int) (string, bool) {
 	out, err := exec.Command("ps", "-o", "comm=", "-p", strconv.Itoa(pid)).Output()
 	if err != nil {

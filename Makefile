@@ -140,8 +140,8 @@ status:
 # doctor is the read-only "why isn't Vox working?" check. It reports the
 # process/pidfile state, whether the Accessibility grant macOS holds for Vox
 # still matches this build, and — the part System Settings can't show —
-# whether another app that is
-# switched OFF in System Settings > Menu Bar has captured Vox's status item.
+# whether another app that is switched OFF in System Settings > Menu Bar has
+# captured Vox's status item.
 # That last case happens when Vox is launched as a child of a terminal, IDE,
 # or agent host. Reading the ledger needs Full Disk Access on the terminal.
 #

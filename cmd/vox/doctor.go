@@ -133,7 +133,6 @@ func doctorProcess() checkResult {
 func doctorPermissions() checkResult {
 	fmt.Println()
 	fmt.Println("[2/3] Permissions")
-	result := checkPass
 
 	fmt.Print("  Accessibility (this process): ")
 	if hotkey.AccessibilityGranted() {
@@ -150,7 +149,7 @@ func doctorPermissions() checkResult {
 	}
 
 	fmt.Print("  Accessibility (Vox.app):      ")
-	result = reportAccessibilityGrant()
+	result := reportAccessibilityGrant()
 
 	fmt.Print("  Microphone:                   ")
 	if hotkey.MicrophoneAuthorized() {
@@ -170,7 +169,7 @@ func reportAccessibilityGrant() checkResult {
 		return checkInconclusive
 	}
 
-	state, err := accessibilityGrant(app, bundleID)
+	state, err := recordedAccessibilityGrant(app, bundleID)
 	switch state {
 	case grantActive:
 		fmt.Println("granted to this build")
