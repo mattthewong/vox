@@ -30,6 +30,7 @@ void uiSetAIPostProcess(int on);
 void uiSetPromptMode(int on);
 void uiSetVoiceCommands(int on);
 void uiSetContextAware(int on);
+void uiShowStartupError(const char *title, const char *detail, const char *settingsPane);
 void uiRun(void);
 void uiQuit(void);
 */
@@ -161,6 +162,31 @@ func Run() {
 // Quit asks NSApp to terminate, causing Run to return.
 func Quit() {
 	C.uiQuit()
+}
+
+// AccessibilitySettingsPane deep-links to the list Vox must be enabled in.
+const AccessibilitySettingsPane = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+
+// MicrophoneSettingsPane deep-links to the microphone equivalent.
+const MicrophoneSettingsPane = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+
+// ShowStartupError displays a modal alert saying why Vox could not start and
+// blocks until the user dismisses it. A non-empty settingsPane adds a button
+// that opens that System Settings pane.
+//
+// Callable before Init, and deliberately so: the startup failures worth
+// reporting this way all happen before the menubar exists.
+func ShowStartupError(title, detail, settingsPane string) {
+	cTitle := C.CString(title)
+	defer C.free(unsafe.Pointer(cTitle))
+	cDetail := C.CString(detail)
+	defer C.free(unsafe.Pointer(cDetail))
+	cPane := C.CString(settingsPane)
+	defer C.free(unsafe.Pointer(cPane))
+
+	mainthread.Call(func() {
+		C.uiShowStartupError(cTitle, cDetail, cPane)
+	})
 }
 
 // OnQuit returns a channel that receives a value when the user clicks

@@ -139,9 +139,8 @@ func run() {
 	// Ensure only one instance of vox is running.
 	lockFile, err := acquireLock()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Error: vox is already running.")
-		fmt.Fprintln(os.Stderr, "  Kill the other instance first, or run: make stop")
-		os.Exit(1)
+		quitWithStartupError("Vox is already running.",
+			"Quit the other instance first, or run: make stop", "")
 	}
 	defer lockFile.Close()
 
@@ -160,25 +159,27 @@ func run() {
 
 	// Check Accessibility permission.
 	if !hotkey.CheckAccessibility() {
-		fmt.Fprintln(os.Stderr, "Error: Accessibility permission required.")
-		fmt.Fprintln(os.Stderr, "  Approve the prompt, or grant Vox in:")
-		fmt.Fprintln(os.Stderr, "  System Settings > Privacy & Security > Accessibility")
-		fmt.Fprintln(os.Stderr, "  If Vox is already listed there, the grant belongs to an older")
-		fmt.Fprintln(os.Stderr, "  build: run `make doctor` to confirm, then re-grant it.")
-		os.Exit(1)
+		quitWithStartupError("Vox needs Accessibility permission.",
+			"Vox watches for its hotkey, which macOS only allows with Accessibility "+
+				"permission.\n\nApprove the prompt, or enable Vox under Privacy & "+
+				"Security > Accessibility.\n\nIf Vox is already listed as enabled there, "+
+				"the grant belongs to an older build: run `make doctor` to confirm, then "+
+				"turn Vox off and on again.",
+			ui.AccessibilitySettingsPane)
 	}
 
 	// Check Microphone permission.
 	if !hotkey.RequestMicrophoneAccess() {
-		fmt.Fprintln(os.Stderr, "Microphone denied — grant it in System Settings > Privacy & Security > Microphone")
-		os.Exit(1)
+		quitWithStartupError("Vox needs microphone access.",
+			"Vox cannot transcribe speech it cannot hear. Enable Vox under Privacy & "+
+				"Security > Microphone.",
+			ui.MicrophoneSettingsPane)
 	}
 
 	// Resolve the configured engine/model and bring up its backend.
 	selectedModel, err := resolveEngineModel(cfg.ModelID)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		quitWithStartupError("Vox could not select a speech model.", err.Error(), "")
 	}
 	if !sttmodel.IsInstalled(selectedModel) {
 		fmt.Printf("Selected model %q is not installed, downloading (%d MiB)...\n",
@@ -193,8 +194,7 @@ func run() {
 	// A nil engine is the only fatal case. A non-nil engine with a non-nil
 	// error means "running, but degraded" — do not exit.
 	if activeEngine == nil {
-		fmt.Fprintf(os.Stderr, "Error starting speech engine: %v\n", startErr)
-		os.Exit(1)
+		quitWithStartupError("Vox could not start the speech engine.", startErr.Error(), "")
 	}
 	if degraded {
 		logger.Warn("stt engine fell back",
@@ -230,9 +230,8 @@ func run() {
 	// Create audio recorder.
 	recorder, err := audio.NewRecorder()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		fmt.Fprintln(os.Stderr, "Install sox: brew install sox")
-		os.Exit(1)
+		quitWithStartupError("Vox found no way to record audio.",
+			err.Error()+"\n\nInstall sox: brew install sox", "")
 	}
 
 	// Load custom vocabulary for whisper.cpp hints.
@@ -319,8 +318,8 @@ func run() {
 	// run loop. Non-blocking: events arrive once we call ui.Run() below.
 	listener := hotkey.NewListener(cfg.Triggers)
 	if err := listener.Start(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		quitWithStartupError("Vox could not listen for its hotkey.", err.Error(),
+			ui.AccessibilitySettingsPane)
 	}
 
 	// Print active features.
