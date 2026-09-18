@@ -51,7 +51,7 @@ func TestStderrIsNotTerminalWhenClosed(t *testing.T) {
 	f.Close()
 	withStderr(t, f)
 
-	// Stat on a closed descriptor errors; a startup failure must still be
+	// A closed descriptor is not a terminal; a startup failure must still be
 	// reported somewhere rather than silently suppressed.
 	if stderrIsTerminal() {
 		t.Error("stderrIsTerminal() = true for a closed file")
@@ -89,21 +89,28 @@ func TestStderrIsTerminalForTTY(t *testing.T) {
 	}
 }
 
-// NSAlert returns without drawing when the process is not a registered app,
-// so a redirected `go run ./cmd/vox` must stay text-only rather than silently
-// consuming a button response it never showed.
-func TestNoStartupAlertOutsideAppBundle(t *testing.T) {
-	if _, bundled := appBundlePath(); bundled {
-		t.Skip("test binary resolved to an .app bundle")
+func TestShouldAlertOnStartupError(t *testing.T) {
+	cases := []struct {
+		name             string
+		inAppBundle      bool
+		stderrOnTerminal bool
+		want             bool
+	}{
+		// The case the alert exists for: a Finder launch has a bundle and
+		// nothing reading stderr, so a silent exit is all the user sees.
+		{"finder launch", true, false, true},
+		// A terminal run must not raise a modal in front of the user.
+		{"bundle run from a terminal", true, true, false},
+		// NSAlert returns without drawing when the process is not a
+		// registered app, so a redirected `go run ./cmd/vox` stays text-only
+		// rather than silently consuming a button response it never showed.
+		{"bare binary, output redirected", false, false, false},
+		{"bare binary in a terminal", false, true, false},
 	}
-	f, err := os.Create(filepath.Join(t.TempDir(), "vox.log"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	withStderr(t, f)
-
-	if shouldAlertOnStartupError() {
-		t.Error("shouldAlertOnStartupError() = true for a bare binary")
+	for _, c := range cases {
+		if got := shouldAlertOnStartupError(c.inAppBundle, c.stderrOnTerminal); got != c.want {
+			t.Errorf("%s: shouldAlertOnStartupError(%v, %v) = %v, want %v",
+				c.name, c.inAppBundle, c.stderrOnTerminal, got, c.want)
+		}
 	}
 }

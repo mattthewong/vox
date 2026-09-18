@@ -24,7 +24,8 @@ func quitWithStartupError(title, detail, settingsPane string) {
 	for _, line := range strings.Split(detail, "\n") {
 		fmt.Fprintf(os.Stderr, "  %s\n", line)
 	}
-	if shouldAlertOnStartupError() {
+	_, inAppBundle := appBundlePath()
+	if shouldAlertOnStartupError(inAppBundle, stderrIsTerminal()) {
 		ui.ShowStartupError(title, detail, settingsPane)
 	}
 	os.Exit(1)
@@ -36,11 +37,8 @@ func quitWithStartupError(title, detail, settingsPane string) {
 // Both conditions matter. Outside a bundle Cocoa has no registered app to
 // attach a modal to and NSAlert returns without ever drawing, so a bare
 // binary must stay text-only however it was redirected.
-func shouldAlertOnStartupError() bool {
-	if _, bundled := appBundlePath(); !bundled {
-		return false
-	}
-	return !stderrIsTerminal()
+func shouldAlertOnStartupError(inAppBundle, stderrOnTerminal bool) bool {
+	return inAppBundle && !stderrOnTerminal
 }
 
 // stderrIsTerminal reports whether a terminal is reading Vox's error output.
