@@ -2,26 +2,31 @@
 
 export CGO_LDFLAGS := -Wl,-no_warn_duplicate_libraries
 
-# Bundle identity. Stable so macOS TCC keeps perms across rebuilds.
 APP_BUNDLE    := bin/Vox.app
 APP_BUNDLE_ID := dev.vox.menubar
 
 build:
 	go build -o bin/vox ./cmd/vox
 
-# app wraps bin/vox in a real .app bundle so TCC keys perms on bundle ID.
+# app wraps bin/vox in a real .app bundle so Accessibility and Microphone
+# grants belong to Vox itself rather than to whatever launched it.
 #
 # bundle-dylibs.sh copies the sherpa-onnx dylibs in and repoints the binary at
 # them; without it the bundle only runs on the machine that built it. It also
 # does the codesigning, because install_name_tool invalidates signatures —
 # signing here instead would produce a bundle that fails `codesign --verify`.
+#
+# signing-identity.sh yields a certificate name, or nothing on a machine
+# without a usable keychain, in which case the bundle is signed ad-hoc and
+# each rebuild costs a fresh permission grant.
 app: build
 	@rm -rf $(APP_BUNDLE)
 	@mkdir -p $(APP_BUNDLE)/Contents/MacOS
 	@cp packaging/Info.plist $(APP_BUNDLE)/Contents/Info.plist
 	@cp bin/vox $(APP_BUNDLE)/Contents/MacOS/vox
-	@./packaging/bundle-dylibs.sh $(APP_BUNDLE) $(APP_BUNDLE_ID) >/dev/null
-	@echo "Built $(APP_BUNDLE) ($(APP_BUNDLE_ID))"
+	@identity="$$(./packaging/signing-identity.sh)"; \
+	./packaging/bundle-dylibs.sh $(APP_BUNDLE) $(APP_BUNDLE_ID) "$${identity:--}" >/dev/null; \
+	echo "Built $(APP_BUNDLE) ($(APP_BUNDLE_ID), signed by $${identity:-ad-hoc})"
 
 test:
 	go test -v ./...
@@ -133,9 +138,10 @@ status:
 	fi
 
 # doctor is the read-only "why isn't Vox working?" check. It reports the
-# process/pidfile state, the TCC grants for the *current* build's signature,
-# and — the part System Settings can't show — whether another app that is
-# switched OFF in System Settings > Menu Bar has captured Vox's status item.
+# process/pidfile state, whether the Accessibility grant macOS holds for Vox
+# still matches this build, and — the part System Settings can't show —
+# whether another app that is switched OFF in System Settings > Menu Bar has
+# captured Vox's status item.
 # That last case happens when Vox is launched as a child of a terminal, IDE,
 # or agent host. Reading the ledger needs Full Disk Access on the terminal.
 #

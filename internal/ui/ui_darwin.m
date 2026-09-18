@@ -693,6 +693,44 @@ void uiSetContextAware(int on) {
     });
 }
 
+// MARK: - Startup errors
+
+// uiShowStartupError puts a fatal startup reason on screen. Vox is an
+// LSUIElement app, so it has no Dock icon, no window and no terminal when
+// Finder launches it — without this the process just exits and the user sees
+// nothing at all.
+//
+// Runs the alert synchronously on the calling thread rather than dispatching
+// to the main queue: this is called before uiRun, so nothing is servicing
+// that queue yet and a dispatched block would never fire.
+//
+// settingsPane is an x-apple.systempreferences: URL, or empty for no button.
+void uiShowStartupError(const char *title, const char *detail, const char *settingsPane) {
+    @autoreleasepool {
+        [NSApplication sharedApplication];
+        [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+
+        NSAlert *alert = [[[NSAlert alloc] init] autorelease];
+        alert.messageText = [NSString stringWithUTF8String:title];
+        alert.informativeText = [NSString stringWithUTF8String:detail];
+        alert.alertStyle = NSAlertStyleCritical;
+
+        NSString *pane = nil;
+        if (settingsPane != NULL && strlen(settingsPane) > 0) {
+            pane = [NSString stringWithUTF8String:settingsPane];
+            [alert addButtonWithTitle:@"Open System Settings"];
+        }
+        [alert addButtonWithTitle:@"Quit"];
+
+        // An accessory app is not frontmost by default, so the alert would
+        // otherwise open behind whatever the user is looking at.
+        [NSApp activateIgnoringOtherApps:YES];
+        if ([alert runModal] == NSAlertFirstButtonReturn && pane != nil) {
+            [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:pane]];
+        }
+    }
+}
+
 // MARK: - Run loop
 
 void uiRun(void) {

@@ -82,7 +82,7 @@ make start
 
 1. Installs missing system deps (`go`, `sox`, `whisper-cpp`) via Homebrew
 2. Downloads the default Whisper model (~150 MB) to `~/.local/share/whisper-cpp/`
-3. Builds `bin/Vox.app` and ad-hoc codesigns it
+3. Builds `bin/Vox.app` and codesigns it
 4. Launches Vox detached — it manages `whisper-server` itself
 
 The first launch triggers two macOS permission prompts (Microphone and Accessibility); grant both and you're done.
@@ -100,7 +100,7 @@ curl -L -o ~/.local/share/whisper-cpp/ggml-base.en.bin \
 
 ```bash
 make build      # outputs bin/vox (bare binary)
-make app        # outputs bin/Vox.app (macOS bundle, ad-hoc signed)
+make app        # outputs bin/Vox.app (macOS bundle, codesigned)
 make install    # installs bin/vox to /usr/local/bin/vox
 ```
 
@@ -126,7 +126,23 @@ On first run, macOS prompts for two permissions. Grant them to **Vox** (`Vox.app
 - **Microphone** — System Settings > Privacy & Security > Microphone
 - **Accessibility** — System Settings > Privacy & Security > Accessibility
 
-The `.app` bundle uses a stable `CFBundleIdentifier` (`dev.vox.menubar`), so permissions survive rebuilds.
+Permissions survive rebuilds because `make app` signs the bundle with a
+self-signed certificate that `packaging/signing-identity.sh` creates in your
+login keychain on first build. macOS binds each grant to the signature that
+requested it, and a certificate keeps that signature stable; ad-hoc signing
+would bind the grant to the code hash, which every rebuild changes — leaving
+Vox listed as enabled in System Settings while macOS quietly ignores it.
+
+On a machine with no login keychain or no `/usr/bin/openssl`, the certificate
+cannot be created and `make app` falls back to ad-hoc signing — it says which
+one it used, and in the ad-hoc case each rebuild does cost a fresh permission
+grant. Set `VOX_SIGN_IDENTITY_NAME` to sign under a different name, such as an
+existing Developer ID.
+
+If a grant ever does go stale, `make doctor` says so and prints the fix.
+Note that a permission check made by Vox is credited to whatever launched it,
+so `make start` from a terminal that holds Accessibility succeeds even when
+Vox's own grant is broken. Launching `Vox.app` from Finder is the honest test.
 
 ## Speech engines
 

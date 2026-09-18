@@ -60,6 +60,11 @@ make fmt       # gofmt
 ## Critical Notes
 
 1. **CGEventTap requires Accessibility permission.** Checks `AXIsProcessTrusted()` at startup.
+   macOS binds the grant to the signature that asked for it, so `make app` signs the bundle with a
+   self-signed certificate from `packaging/signing-identity.sh`; ad-hoc signing would bind the grant
+   to the code hash and every rebuild would invalidate it. A permission check is also credited to the
+   app that launched Vox, so a run from a terminal that holds Accessibility passes regardless of
+   Vox's own grant — `vox doctor` reports both separately.
 2. **Paste uses CGEvent, not osascript.** `CGEventCreateKeyboardEvent` posts Cmd+V directly to the system. The keycode is resolved from the active keyboard layout via `UCKeyTranslate`, not hardcoded — Dvorak and similar layouts put `v` on a different physical key than QWERTY.
 3. **Modifier-only hotkey cancellation.** If cmd+shift is held then a regular key is pressed, recording cancels (distinguishes dictation from keyboard shortcuts).
 4. **Whisper endpoint auto-detection.** Probes `/v1/audio/transcriptions` first, falls back to `/inference` (whisper.cpp native). Cached after first probe.

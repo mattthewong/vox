@@ -124,27 +124,75 @@ func doctorProcess() checkResult {
 
 // doctorPermissions checks the two TCC grants Vox needs. It only *checks*;
 // it does not trigger prompts.
+//
+// Accessibility gets two lines because the obvious check is the misleading
+// one: macOS credits a permission check to the app that launched Vox, so a
+// run from a terminal that holds Accessibility reports success no matter what
+// Vox itself was granted. What survives a Finder launch is the grant macOS
+// recorded for Vox's bundle, so that is what decides the verdict.
 func doctorPermissions() checkResult {
 	fmt.Println()
-	fmt.Println("[2/3] Permissions (for this build's signature)")
-	result := checkPass
+	fmt.Println("[2/3] Permissions")
 
-	fmt.Print("  Accessibility: ")
+	fmt.Print("  Accessibility (this process): ")
 	if hotkey.AccessibilityGranted() {
-		fmt.Println("granted")
+		fmt.Print("granted")
+		switch app, launched := launchingApp(); {
+		case launched && app != "":
+			fmt.Printf(" — may be %s's grant, not Vox's", app)
+		case launched:
+			fmt.Print(" — may belong to whatever launched Vox, not Vox itself")
+		}
+		fmt.Println()
 	} else {
-		fmt.Println("MISSING — System Settings > Privacy & Security > Accessibility")
-		fmt.Println("                 (a rebuild changes the signature; re-toggle Vox off/on)")
-		result = checkFail
+		fmt.Println("not granted")
 	}
 
-	fmt.Print("  Microphone:    ")
+	fmt.Print("  Accessibility (Vox.app):      ")
+	result := reportAccessibilityGrant()
+
+	fmt.Print("  Microphone:                   ")
 	if hotkey.MicrophoneAuthorized() {
 		fmt.Println("granted")
 	} else {
 		fmt.Println("not yet granted — Vox will prompt on first launch")
 	}
 	return result
+}
+
+// reportAccessibilityGrant prints the state of Vox's own Accessibility grant,
+// the one that decides whether a Finder launch works.
+func reportAccessibilityGrant() checkResult {
+	app, bundled := appBundlePath()
+	if !bundled {
+		fmt.Println("no bundle — this is the bare binary; run `make app` and launch Vox.app")
+		return checkInconclusive
+	}
+
+	state, err := recordedAccessibilityGrant(app, bundleID)
+	switch state {
+	case grantActive:
+		fmt.Println("granted to this build")
+		return checkPass
+	case grantStaleSignature:
+		fmt.Println("STALE — granted to a differently signed build")
+		fmt.Println("                                System Settings still shows Vox as enabled, but macOS")
+		fmt.Println("                                will not honour that grant. Clear it and grant once more:")
+		fmt.Printf("                                    tccutil reset Accessibility %s\n", bundleID)
+		fmt.Println("                                Then launch Vox.app from Finder and approve the prompt.")
+		return checkFail
+	case grantDenied:
+		fmt.Println("DENIED — turn Vox on in System Settings > Privacy & Security > Accessibility")
+		return checkFail
+	case grantAbsent:
+		fmt.Println("not granted — launch Vox.app from Finder and approve the prompt")
+		return checkFail
+	default:
+		fmt.Printf("could not be read (%v)\n", err)
+		fmt.Println("                                Reading it needs Full Disk Access for this terminal:")
+		fmt.Println("                                System Settings > Privacy & Security > Full Disk Access")
+		return checkInconclusive
+	}
 }
 
 // doctorMenuBar inspects Control Center's status-item ledger for the one
