@@ -95,6 +95,10 @@ func main() {
 func run() {
 	log.SetFlags(0)
 
+	// Before anything looks for sox, ffmpeg, whisper-server or brew: a Finder
+	// launch inherits a PATH that omits Homebrew.
+	ensureHomebrewOnPath()
+
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "setup":
