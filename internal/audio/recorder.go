@@ -163,6 +163,53 @@ func (r *Recorder) Start() error {
 	return nil
 }
 
+// WaitReady blocks until the recording subprocess has written real audio, or
+// timeout elapses. sox/ffmpeg take ~0.5s to open the input device (longer for
+// Bluetooth headsets switching profiles), and speech in that gap is lost, so
+// callers should signal "start talking" only after this returns true.
+func (r *Recorder) WaitReady(timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for {
+		r.mu.Lock()
+		recording, path := r.recording, r.tmpPath
+		r.mu.Unlock()
+		if !recording {
+			return false
+		}
+		// minFileSize is well past either tool's WAV header, so data is flowing.
+		if fi, err := os.Stat(path); err == nil && fi.Size() >= minFileSize {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// Snapshot returns the audio captured so far without stopping the recording.
+// The WAV header still carries the recorder's placeholder sizes; whisper.cpp
+// and parakeet.DecodeWAV both read to the end of the payload regardless.
+// Returns ErrNotRecording if no recording is in progress and ErrTooShort if
+// nothing useful has been captured yet.
+func (r *Recorder) Snapshot() ([]byte, error) {
+	// Hold the lock across the read so Stop can't delete the file under us.
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if !r.recording {
+		return nil, ErrNotRecording
+	}
+	data, err := os.ReadFile(r.tmpPath)
+	if err != nil {
+		return nil, fmt.Errorf("read in-progress audio: %w", err)
+	}
+	if len(data) < minFileSize {
+		return nil, ErrTooShort
+	}
+	return data, nil
+}
+
 // Stop ends the recording, reads the WAV data, and cleans up the temp file.
 // Returns ErrNotRecording if no recording is in progress.
 // Returns ErrTooShort if the resulting file is too small to contain useful audio.

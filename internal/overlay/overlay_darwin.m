@@ -3,14 +3,14 @@
 #include <string.h>
 
 // Overlay window and labels -- global references.
-// All functions in this file MUST be called from the main thread.
-// The Go layer ensures this via golang.design/x/mainthread.Call.
+// Only touched on the main queue: every entry point below dispatch_asyncs
+// its AppKit work there, so callers may be on any thread.
 static NSWindow *overlayWindow = nil;
 static NSTextField *textLabel = nil;
 static NSTextField *statusLabel = nil;
 
 void overlayInit(void) {
-    @autoreleasepool {
+    dispatch_async(dispatch_get_main_queue(), ^{
         if (overlayWindow != nil) return;
 
         // Get main screen dimensions.
@@ -61,32 +61,36 @@ void overlayInit(void) {
         [textLabel setDrawsBackground:NO];
         [textLabel setEditable:NO];
         [textLabel setSelectable:NO];
-        [textLabel setLineBreakMode:NSLineBreakByTruncatingTail];
+        // Truncate the head so the newest words stay visible as text grows.
+        [textLabel setLineBreakMode:NSLineBreakByTruncatingHead];
         [overlayWindow.contentView addSubview:textLabel];
-    }
+    });
 }
 
 void overlayShow(void) {
-    @autoreleasepool {
+    dispatch_async(dispatch_get_main_queue(), ^{
         if (overlayWindow != nil) {
             [textLabel setStringValue:@""];
             [overlayWindow orderFront:nil];
         }
-    }
+    });
 }
 
 void overlayHide(void) {
-    @autoreleasepool {
+    dispatch_async(dispatch_get_main_queue(), ^{
         if (overlayWindow != nil) {
             [overlayWindow orderOut:nil];
         }
-    }
+    });
 }
 
 void overlayUpdateText(const char *text) {
-    @autoreleasepool {
-        if (text == NULL) return;
-        NSString *nsText = [[NSString alloc] initWithUTF8String:text];
+    if (text == NULL) return;
+    // Copy now: the Go caller frees text as soon as we return.
+    char *copy = strdup(text);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSString *nsText = [NSString stringWithUTF8String:copy];
+        free(copy);
         if (nsText == nil) {
             // Invalid UTF-8; replace with a safe fallback.
             nsText = @"[invalid text]";
@@ -94,24 +98,26 @@ void overlayUpdateText(const char *text) {
         if (textLabel != nil) {
             [textLabel setStringValue:nsText];
         }
-    }
+    });
 }
 
 void overlaySetStatus(const char *status) {
-    @autoreleasepool {
-        if (status == NULL) return;
-        NSString *nsStatus = [[NSString alloc] initWithUTF8String:status];
+    if (status == NULL) return;
+    char *copy = strdup(status);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSString *nsStatus = [NSString stringWithUTF8String:copy];
+        free(copy);
         if (nsStatus == nil) {
             nsStatus = @"";
         }
         if (statusLabel != nil) {
             [statusLabel setStringValue:nsStatus];
         }
-    }
+    });
 }
 
 void overlayClose(void) {
-    @autoreleasepool {
+    dispatch_async(dispatch_get_main_queue(), ^{
         if (overlayWindow != nil) {
             [overlayWindow orderOut:nil];
             [overlayWindow close];
@@ -119,5 +125,5 @@ void overlayClose(void) {
         }
         textLabel = nil;
         statusLabel = nil;
-    }
+    });
 }

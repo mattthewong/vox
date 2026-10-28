@@ -38,5 +38,7 @@ func SystemPromptWithHint(basePrompt string, category appctx.Category) string {
 	if hint == "" {
 		return basePrompt
 	}
-	return basePrompt + "\n\n" + hint
+	// Hints come last, so the model weighs them heavily; scope them to style
+	// so "brief"/"terse" can't override the base prompt's no-dropping rule.
+	return basePrompt + "\n\nFormatting context (adjust style only; never drop, shorten, or summarize content): " + hint
 }

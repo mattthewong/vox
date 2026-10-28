@@ -37,5 +37,8 @@ func (l *Listener) Start() error {
 // Keydown returns the keydown channel.
 func (l *Listener) Keydown() <-chan struct{} { return l.keydown }
 
+// Held always returns false on non-darwin platforms.
+func (l *Listener) Held() bool { return false }
+
 // Keyup returns the keyup channel.
 func (l *Listener) Keyup() <-chan struct{} { return l.keyup }

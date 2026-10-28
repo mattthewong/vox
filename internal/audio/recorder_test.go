@@ -385,3 +385,76 @@ func TestStopCleansUpTempFile(t *testing.T) {
 		os.Remove(tmpPath)
 	}
 }
+
+func TestSnapshotWithoutStart(t *testing.T) {
+	hasMicrophone(t)
+
+	r, err := NewRecorder()
+	if err != nil {
+		t.Fatalf("NewRecorder() error: %v", err)
+	}
+	if _, err := r.Snapshot(); !errors.Is(err, ErrNotRecording) {
+		t.Errorf("expected ErrNotRecording, got: %v", err)
+	}
+}
+
+func TestSnapshotWhileRecording(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+	hasMicrophone(t)
+
+	r, err := NewRecorder()
+	if err != nil {
+		t.Fatalf("NewRecorder() error: %v", err)
+	}
+	if err := r.Start(); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+	defer func() { _, _ = r.Stop() }()
+
+	time.Sleep(1 * time.Second)
+
+	data, err := r.Snapshot()
+	if err != nil {
+		t.Fatalf("Snapshot() error: %v", err)
+	}
+	if len(data) < 4 || string(data[:4]) != "RIFF" {
+		t.Errorf("expected snapshot to start with a RIFF header")
+	}
+	if !r.IsRecording() {
+		t.Error("expected Snapshot() to leave the recording running")
+	}
+}
+
+func TestWaitReadyWithoutStart(t *testing.T) {
+	hasMicrophone(t)
+
+	r, err := NewRecorder()
+	if err != nil {
+		t.Fatalf("NewRecorder() error: %v", err)
+	}
+	if r.WaitReady(50 * time.Millisecond) {
+		t.Error("expected WaitReady() to be false when not recording")
+	}
+}
+
+func TestWaitReadyWhileRecording(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+	hasMicrophone(t)
+
+	r, err := NewRecorder()
+	if err != nil {
+		t.Fatalf("NewRecorder() error: %v", err)
+	}
+	if err := r.Start(); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+	defer func() { _, _ = r.Stop() }()
+
+	if !r.WaitReady(3 * time.Second) {
+		t.Fatal("expected WaitReady() to see audio within 3s")
+	}
+}

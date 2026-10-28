@@ -207,7 +207,7 @@ VOX_HOTKEY="fn,cmd+shift"       # Multiple hotkeys (either triggers)
 AI-powered features require an Anthropic API key. Set via `~/.vox/config.yaml`:
 
 ```yaml
-anthropic_api_key: sk-ant-...
+anthropic_key: sk-ant-...
 ```
 
 Or distribute keys to a team via LaunchDarkly feature flags:
