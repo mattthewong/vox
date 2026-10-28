@@ -126,7 +126,9 @@ func (c *Client) Transcribe(ctx context.Context, wavData []byte, opts Transcribe
 		return "", fmt.Errorf("parse transcription response: %w (body: %s)", err, truncate(respBody, 256))
 	}
 
-	return strings.TrimSpace(result.Text), nil
+	// whisper.cpp joins segments with "\n" and starts each with a space, which
+	// pastes as ragged, indented lines. Dictation is one run of prose.
+	return strings.Join(strings.Fields(result.Text), " "), nil
 }
 
 // HealthCheck verifies connectivity to the Whisper server by hitting its health

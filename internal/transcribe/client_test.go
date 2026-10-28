@@ -264,3 +264,23 @@ func TestResetEndpointClearsCachedDetection(t *testing.T) {
 		t.Fatalf("probe calls after reset = %d, want 2", openAICalls.Load())
 	}
 }
+
+func TestTranscribeFlattensSegments(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/inference" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{"text":" Okay, I think this is working.\n I just want to see,\n  is there a way\n"}`))
+	}))
+	defer srv.Close()
+
+	got, err := NewClient(srv.URL).Transcribe(context.Background(), minimalWAV, TranscribeOptions{})
+	if err != nil {
+		t.Fatalf("Transcribe() error: %v", err)
+	}
+	want := "Okay, I think this is working. I just want to see, is there a way"
+	if got != want {
+		t.Errorf("Transcribe() = %q, want %q", got, want)
+	}
+}

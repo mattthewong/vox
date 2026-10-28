@@ -14,6 +14,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"golang.design/x/mainthread"
 
@@ -29,6 +30,7 @@ import (
 	"vox/internal/hotkey"
 	"vox/internal/inject"
 	"vox/internal/notify"
+	"vox/internal/overlay"
 	"vox/internal/pipeline"
 	"vox/internal/prompt"
 	"vox/internal/sttmodel"
@@ -312,6 +314,11 @@ func run() {
 	ui.SetPromptMode(settings.PromptMode.Load())
 	ui.SetVoiceCommands(settings.VoiceCommands.Load())
 	ui.SetContextAware(settings.ContextAware.Load())
+
+	// The overlay window needs NSApp, so this must follow ui.Init.
+	if flagClient.StreamingOverlay() {
+		preview = newLivePreview(ctx, overlay.New(), recorder, engines, transcribeOpts)
+	}
 
 	// Create hotkey listener and register the CGEventTap source on the main
 	// run loop. Non-blocking: events arrive once we call ui.Run() below.
@@ -890,6 +897,12 @@ func runEventLoop(
 				continue
 			}
 			if settings.HoldToTalk.Load() {
+				// A keydown that sat in the buffer while we were busy (mic
+				// warm-up, transcription) may outlive its dropped keyup.
+				// Starting then would leave the mic on with no release coming.
+				if recorder.IsRecording() || !listener.Held() {
+					continue
+				}
 				startRecording(logger, recorder, cfg.Verbose, "Recording...")
 			} else {
 				if recorder.IsRecording() {
@@ -920,13 +933,31 @@ func startRecording(logger *slog.Logger, recorder *audio.Recorder, verbose bool,
 		logger.Debug("hotkey pressed, starting recording")
 	}
 	ui.SetState(ui.StateRecording)
-	playStart()
-	fmt.Println(banner)
 	if err := recorder.Start(); err != nil {
 		fmt.Printf("Error starting recording: %v\n", err)
 		ui.SetState(ui.StateIdle)
+		return
+	}
+	// Chime only once the mic is live, so the user doesn't talk into the
+	// device-open gap. A keyup during the wait stays buffered in the listener.
+	if !recorder.WaitReady(micReadyTimeout) {
+		if !recorder.IsRecording() {
+			return // paused or stopped while the mic was opening
+		}
+		if verbose {
+			logger.Debug("mic not ready before timeout; starting anyway")
+		}
+	}
+	playStart()
+	fmt.Println(banner)
+	if preview != nil {
+		preview.start()
 	}
 }
+
+// micReadyTimeout bounds how long a keypress waits for the mic to open before
+// chiming anyway; Bluetooth profile switches are the slow case.
+const micReadyTimeout = 2 * time.Second
 
 func playStart() {
 	if settings.SoundsEnabled.Load() {
@@ -957,7 +988,18 @@ func handleStopAndProcess(
 
 	fmt.Println("Transcribing...")
 
+	// Stop the recorder before waiting out an in-flight preview pass, so the
+	// final audio ends at key release rather than when that pass finishes.
+	waitPreview := func() {}
+	if preview != nil {
+		waitPreview = preview.halt()
+	}
 	wavData, err := recorder.Stop()
+	if preview != nil {
+		waitPreview()
+		preview.ov.SetStatus(overlay.StatusTranscribing)
+		defer preview.ov.Hide()
+	}
 	if err != nil {
 		if errors.Is(err, audio.ErrTooShort) {
 			fmt.Println("Too short, skipping.")

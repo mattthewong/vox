@@ -113,6 +113,15 @@ func (l *Listener) Keydown() <-chan struct{} { return l.keydown }
 // Keyup returns a channel that receives when a hotkey is released.
 func (l *Listener) Keyup() <-chan struct{} { return l.keyup }
 
+// Held reports whether a hotkey is currently pressed. The keydown/keyup
+// channels hold one event each and drop the rest, so a consumer that was busy
+// can see a stale keydown after the key is already back up.
+func (l *Listener) Held() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.active
+}
+
 //export goEventCallback
 func goEventCallback(eventType uint32, flags uint64, keycode int64) int32 {
 	mu.Lock()
